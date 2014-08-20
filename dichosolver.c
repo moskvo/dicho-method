@@ -40,14 +40,14 @@ int main(int argc, char** argv){
   MPI_Request *msgreq = (MPI_Request*)malloc(4*sizeof(MPI_Request)), *reqsz = msgreq, *reqp = msgreq+1, *reqw = msgreq+2, *reqb = msgreq+3;
   MPI_Status *msgstat = (MPI_Status*)malloc(4*sizeof(MPI_Status)), *statsz = msgstat, *statp = msgstat+1, *statw = msgstat+2, *statb = msgstat+3;
 
-/* code for process zero */
+/* get task code for process zero */
 if (myrank == 0) 
 {
   mytask = readnspread_task (argv[1], &groupsize);
 
 }
 
-/* code for process one */
+/* get task code for process one */
 else {
     // get b
     knint b;
@@ -119,20 +119,19 @@ else {
     if( (myrank+1 == group) && (group % 2 == 1) ) to = frontier - 1;
     // the number of solution elements
     MPI_Isend(&(root->length), 1, MPI_INT, to, SIZE_MSG, MPI_COMM_WORLD, reqsz);
-    int *p = (knint*)malloc(root->length*KNINT_SIZE), *w = (knint*)malloc(root->length*KNINT_SIZE), *pp, *pw;
-    for ( fp = root->items, pp = p, pw = w ; fp != NULL ; fp = fp->hh.next, pp++, pw++ ){
-      *pp = *(fp->p);
-      *pw = *(fp->w);
-    }
     if( root->length > 0 ){
+      knint *p = (knint*)malloc(root->length*KNINT_SIZE), *w = (knint*)malloc(root->length*KNINT_SIZE), *pp, *pw;
+      for ( fp = root->items, pp = p, pw = w ; fp != NULL ; fp = fp->hh.next, pp++, pw++ ){
+        *pp = *(fp->p);
+        *pw = *(fp->w);
+      }
       // send p and w
       MPI_Isend( p, root->length, MPI_KNINT,to,P_MSG, MPI_COMM_WORLD, reqp);
       //printf("%d send: ",myrank); print_items(root->length, root->items);
       MPI_Isend( w, root->length, MPI_KNINT,to,W_MSG, MPI_COMM_WORLD, reqw);
       MPI_Waitall(2,reqp,statp);
     }
-    MPI_Wait(reqsz,statsz);
-    free(p); free(w);
+    MPI_Wait(reqsz,statsz); free(p); free(w);
 
   }
 
@@ -140,37 +139,38 @@ else {
   // we get the optimal knapsack value and weight,
   //  now we must reconstruct elements of it. All sets of elements that leading to optimal knapsack
 
-  int element, size;
+  //int element, 
+  int size;
+  knint weight;
   head_list_t *solution;
   // process zero run the reconstruction
   if ( myrank == 0 ){
-    element = root->length-1;
-    // reconstruction() return all sets of solutions.
-    solution = reconstruction(root, element);
-    puts("0: print solution."); fflush(stdout);
+    //element = root->length-1;
+    // reconstruction() return head to list of all sets of solutions.
+    solution = reconstruction ( root, *(root->items->w) );
+
+    puts("0: print first solution."); fflush(stdout);
     print_items (solution->next->length, solution->next->items);
-    cnt = -1;
     // what is it? like quit signal
     int i;
-    for( i = 0; i < groupsize ; i++ ){
-      MPI_Isend (&cnt, 1, MPI_INT, i, RECONSTR_MSG, MPI_COMM_WORLD, reqsz);
+    knint killsig = -1;
+    for( i = 1; i < groupsize ; i++ ){
+      MPI_Isend (&killsig, 1, MPI_KNINT, i, RECONSTR_MSG, MPI_COMM_WORLD, reqsz);
     }
   }
   // other processes are waiting for reconstruction signal
-//######## 19/08/2014
   else {
-
-    MPI_Recv (&element, 1, MPI_INT, MPI_ANY_SOURCE, RECONSTR_MSG, MPI_COMM_WORLD, statb);
-    if( element > -1 ){
-      printf("%d: i receive 'reconstruction' message: %d\n",myrank,element); fflush(stdout);
+    MPI_Recv (&weight, 1, MPI_KNINT, MPI_ANY_SOURCE, RECONSTR_MSG, MPI_COMM_WORLD, statb);
+    if( weight > -1 ){
+      printf("%d: i receive 'reconstruction' message for weight: %ld\n",myrank,weight); fflush(stdout);
       //print_tree(root); fflush(stdout);
-      solution = reconstruction(root, element);
+      solution = reconstruction(root, weight);
       printf("%d: i sending reconstructed message in size %d\n",myrank,solution->count);
       print_list (solution); fflush(stdout);
       MPI_Isend (&(solution->count), 1, MPI_INT, statb->MPI_SOURCE, SOL_SIZE_MSG, MPI_COMM_WORLD,reqb);
       node_list_t *i;
       //int ct = 0;
-      for ( i = solution->next ; i != 0 ; i = i->next ){
+      for ( i = solution->next ; i != NULL ; i = i->next ){
         if ( i->length < 1 ) { printf("%d: node's length = %d\n",myrank,i->length); fflush(stdout); }
         MPI_Isend (&(i->length), 1, MPI_INT, statb->MPI_SOURCE, SIZE_MSG, MPI_COMM_WORLD, reqsz);
         MPI_Isend (i->items->p, i->length, MPI_KNINT, statb->MPI_SOURCE, P_MSG, MPI_COMM_WORLD, reqp);
@@ -179,25 +179,25 @@ else {
         //ct++;
         //printf("%d: send %d\n",myrank,ct);
       }
-      
+
     }// if element > -1
-  }// else of myrank == 0 
-    
+  }// else of myrank == 0
+
   // finalizing...
   printf ("%d: finalizing...",myrank);
-  
+
   //free solution(s)
-  if ( element > -1 )  free_list (&solution);  
-  
+  if ( weight > -1 )  free_list (&solution);
+
   //free tree
-  node_t *t;  
+  node_t *t;
   for( ; cnt > 0 ; cnt-- ){
     t = root;
     root = root->lnode;
     free (t);
   }
   free (root); // not free_tree, because root -> array of all nodes (see burkov.c: optimal_dichotomic_tree() )
-  
+
   free_task(&mytask);
   free(msgreq);
   free(msgstat);
@@ -213,25 +213,36 @@ node_t* receive_brother(int from, node_t *root, int *cnt, MPI_Status *stat){
   node_t *head = createnodes(2), *thead = head+1;
   MPI_Recv(&(thead->length), 1, MPI_INT, from, SIZE_MSG, MPI_COMM_WORLD, stat);
   if ( thead->length > 0 ) {
-    thead->items = createitems(thead->length);
-    MPI_Recv(thead->items->p, thead->length, MPI_KNINT, from, P_MSG, MPI_COMM_WORLD, stat);
-    MPI_Recv(thead->items->w, thead->length, MPI_KNINT, from, W_MSG, MPI_COMM_WORLD, stat);
+    knint *p = (knint*)malloc(thead->length*KNINT_SIZE), *w = (knint*)malloc(thead->length*KNINT_SIZE), *pp *ww;
+    MPI_Recv(p, thead->length, MPI_KNINT, from, P_MSG, MPI_COMM_WORLD, stat);
+    MPI_Recv(w, thead->length, MPI_KNINT, from, W_MSG, MPI_COMM_WORLD, stat);
+    thead->items = NULL;
+    item_t *it = createitems(1);
+    for ( pp = p, ww = w ; pp < p + thead->length ; pp++, ww++ ) {
+      *(it->p) = *pp;
+      *(it->w) = *ww;
+      HASH_ADD_KEYPTR (hh, thead->items, it->w, KNINT_SIZE, it);
+      it = copyitem(it);
+    }
     thead->source = from;
+    free(p); free(w);
   } else {
     thead->source = -1;
   }
 
   (*cnt)++;
-  
+
   head->lnode = root;
   head->rnode = thead;
-  
+
   return head;
 }
 
-head_list_t* reconstruction(node_t *root, int element){
+head_list_t* reconstruction(node_t *root, knint weight){
   head_list_t *rez = createlisthead(), *thead;
-  knint elem_p = root->items->p[element], elem_w = root->items->w[element];
+  item_t *elem;
+  HASH_FIND (hh, root->items, &weight, KNINT_SIZE, elem);
+  knint elem_p = *(elem->p), elem_w = *(elem->w);
 
   MPI_Request r,rp,rw, *req=&r, *reqp=&rp, *reqw=&rw;
   MPI_Status s,s2, *stat = &s,*stat2 = &s2;
@@ -240,40 +251,33 @@ head_list_t* reconstruction(node_t *root, int element){
   if ( root->lnode != 0 && root->rnode != 0 ){
 
     knint *lp, *lw, *rp, *rw;
-    
-    item_t *ritems = root->rnode->items, *litems = root->lnode->items;
+
+    item_t *ritems = root->rnode->items, *litems = root->lnode->items, *tmp, *tm2;
     int      rsize = root->rnode->length,  lsize = root->lnode->length;
-    
+
     int lelem, relem;
-    
-    if ( lsize != -1 ) {
-      for ( lp = litems->p, lw = litems->w, lelem = 0 ; lw < litems->w+lsize ; lp++,lw++,lelem++ ) {
-        if ( (*lw == elem_w) && (*lp == elem_p) ) {
-          free(rez);
-          rez = reconstruction (root->lnode,lelem);
-          break;
-        }
-      }
+
+    HASH_FIND (hh, root->lnode->items, &elem_w, KNINT_SIZE, tmp);
+    if ( tmp != NULL && *(tmp->p) == elem_p ){
+      free (rez);
+      rez = reconstruction (root->lnode, &elem_w);
     }
-    if ( rsize != -1 ) {
-      for ( rp = ritems->p, rw = ritems->w, relem = 0 ; rw < ritems->w+rsize ; rp++,rw++,relem++ ) {
-        if ( (*rw == elem_w) && (*rp == elem_p) ) {
-          thead = reconstruction (root->rnode,relem);
-          addlist ( rez, thead );
-          thead->next = 0;
-          free_list (&thead);
-          break;
-        }
-      }
+
+    HASH_FIND (hh, root->rnode->items, &elem_w, KNINT_SIZE, tmp);
+    if ( tmp != NULL && *(tmp->p) == elem_p ) {
+      thead = reconstruction (root->rnode, &elem_w);
+      addlist ( rez, thead );
+      thead->next = NULL;
+      free_list (&thead);
     }
-    
+
     if ( (lsize != -1) && (rsize != -1) ) {
       head_list_t *lhead, *rhead;
-      for ( lp = litems->p, lw=litems->w, lelem=0 ; ((*lw) <= elem_w) && (lw < litems->w+lsize) ; lp++,lw++,lelem++ ) {
-        for ( rp = ritems->p, rw=ritems->w, relem=0 ; (((*lw)+(*rw)) <= elem_w) && (rw < ritems->w+rsize) ; rp++,rw++,relem++ ) {
-          if ( ( ((*lw) + (*rw)) == elem_w ) && ( ((*lp) + (*rp)) == elem_p ) ) {
-            lhead = reconstruction(root->lnode,lelem);
-            rhead = reconstruction(root->rnode,relem);
+      for ( tmp = root->lnode->items ; (*(tmp->w) <= elem_w) && tmp != NULL ; tmp = tmp->hh.next ) {
+        for ( tm2 = root->rnode->items ; ( (*(tmp->w)+*(tm2->w) <= elem_w) && tm2 != NULL ; tm2 = tm2->hh.next ) {
+          if ( ( *(tmp->w) + *(tm2->w) == elem_w ) && ( *(tmp->p) + *(tm2->p)) == elem_p ) ) {
+            lhead = reconstruction (root->lnode, *(tmp->w));
+            rhead = reconstruction (root->rnode, *(tm2->w));
             thead = cartesian ( lhead, rhead );
             //print_list(lhead);
             //print_list(rhead);
@@ -284,13 +288,13 @@ head_list_t* reconstruction(node_t *root, int element){
             free_list ( &lhead );
             free_list ( &rhead );
           }
-        } // for rp
-      } // for lp
+        } // for rnode
+      } // for lnode
     }// if
-  } else if ( root->lnode == 0 && root->rnode == 0 ){ 
+  } else if ( root->lnode == NULL && root->rnode == NULL ){
     // if we get this node from other process
     if ( root->source > -1 ) {
-      MPI_Isend (&element, 1, MPI_INT, root->source, RECONSTR_MSG, MPI_COMM_WORLD, req);
+      MPI_Isend (&elem_w, 1, MPI_KNINT, root->source, RECONSTR_MSG, MPI_COMM_WORLD, req);
       node_list_t *node;
       int rezcount;
       MPI_Recv (&rezcount, 1, MPI_INT, root->source, SOL_SIZE_MSG, MPI_COMM_WORLD, stat);
@@ -308,7 +312,7 @@ head_list_t* reconstruction(node_t *root, int element){
       }
       printf("solution from %d received\n",root->source); fflush(stdout);
     } else { // if we reach leaf
-      additems ( rez, 1, copyitems(1,root->items+element) );
+      additems ( rez, 1, copyitem(elem) );
     }
   } else {
     puts("reconstruction(): one child null and other not null :/");
@@ -316,6 +320,8 @@ head_list_t* reconstruction(node_t *root, int element){
   //puts("-"); print_tree(root); puts("+"); print_list(rez); fflush(stdout);
   return rez;
 }
+
+//#### 20/08/2014
 
 task_t* readnspread_task(char* filename, int *groupsize){
     task_t *mytask;

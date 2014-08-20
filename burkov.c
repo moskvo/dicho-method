@@ -7,12 +7,12 @@ node_t* (*burkovtree)(const task_t*) = optimal_dichotomic_tree;
 *  building optimum dichotomy tree on Burkov,Burkova's works
 */
 node_t* optimal_dichotomic_tree ( const task_t *task){
-  
+
   //{ finding q <= countItems - number of elements on which the maximal symmetric hierarchy must be created
     int q = find_q (task->b);
     q = (q > task->length) ? task->length : q;
   //}
- 
+
   // maximum symmetric hierarchy must be created from top to down!
   // optimally sorting items
   item_t *diitems, // items for dichotomic part
@@ -22,13 +22,16 @@ node_t* optimal_dichotomic_tree ( const task_t *task){
   // head of optimal dichotomic tree
   node_t* head = createnodes (2*task->length-1); // number of all nodes of any tree is doubled number of it's leafs minus one.
 
-  // DP branch  
+  // DP branch
   node_t *p = head;
-  item_t *pl = dpitems;
+  item_t *pl = dpitems, *tmp;
   int i;
   for ( i = 0 ; i < task->length-q ; i++ ) { // in fact p move as p = p + 2
     p->lnode = (p+1);
-      p->lnode->items = pl++;
+      p->lnode->items = NULL;
+      tmp = copyitem(pl);
+      HASH_ADD_KEYPTR ( hh, p->lnode->items, tmp->w, KNINT_SIZE, tmp);
+      pl++;
       p->lnode->length = 1;
     p->rnode = (p+2);
     p = p->rnode;
@@ -109,20 +112,27 @@ void dicho_tree_notrecursive(node_t *head, const int size, item_t *items){
   
   // hang up all remaining items (where sizes[i]==2)
   //t2 = p;
+  item_t *tmp;
   pnext = p + p_size;
   for( i = 0 ; i < p_size ; i++ ){
     if( sizes[i] > 2 ) { printf("size of leaf more than 2\n"); fflush(stdout); }
     if( sizes[i] == 2 ){
       //1: pnext = (node_t*)calloc (2,NODE_SIZE);
-      pnext->items = &items[indexes[i]];
+      pnext->items = NULL;
+      tmp = copyitem (&items[indexes[i]]);
+      HASH_ADD_KEYPTR (hh, pnext->items, tmp->w, KNINT_SIZE, tmp);
       pnext->length = 1;
       p->lnode = pnext++;
 
-      pnext->items = &items[indexes[i]+1];
+      pnext->items = NULL;
+      tmp = copyitem (&items[indexes[i]+1]);
+      HASH_ADD_KEYPTR (hh, pnext->items, tmp->w, KNINT_SIZE, tmp);
       pnext->length = 1;
       p->rnode = pnext++;
     } else if( sizes[i] == 1 ){
-      p->items = &items[indexes[i]];
+      p->items = NULL;
+      tmp = copyitem (&items[indexes[i]]);
+      HASH_ADDKEYPTR (hh, p->items, tmp->w, KNINT_SIZE, tmp);
       p->length = 1;
     } else {
       // error
