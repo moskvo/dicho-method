@@ -69,7 +69,7 @@ void dicho_tree_notrecursive(node_t *head, const int size, item_t *items){
       *indexes = sizes + 1, // start index of items that belongs to accordingly subtree
       *tmpsizes, *tmpindexes, *ss, *ii, *ss2, *ii2;
     *sizes = size; *indexes = 0;
-  
+
   // creating a maximum symmetric tree
   int dp = (int)log2f ((float)size);
   int i;
@@ -109,7 +109,7 @@ void dicho_tree_notrecursive(node_t *head, const int size, item_t *items){
     p_size = pnext_size;
     pnext_size <<= 1;
   } // for i
-  
+
   // hang up all remaining items (where sizes[i]==2)
   //t2 = p;
   item_t *tmp;
@@ -132,7 +132,7 @@ void dicho_tree_notrecursive(node_t *head, const int size, item_t *items){
     } else if( sizes[i] == 1 ){
       p->items = NULL;
       tmp = copyitem (&items[indexes[i]]);
-      HASH_ADDKEYPTR (hh, p->items, tmp->w, KNINT_SIZE, tmp);
+      HASH_ADD_KEYPTR (hh, p->items, tmp->w, KNINT_SIZE, tmp);
       p->length = 1;
     } else {
       // error
@@ -141,21 +141,21 @@ void dicho_tree_notrecursive(node_t *head, const int size, item_t *items){
     }
     p++;
   }
-  
-}// dicho_tree_notrecursive()    
+
+}// dicho_tree_notrecursive()
 
 /*  funcs for solving */
 
 void treesolver(node_t* root, knint cons){
   if( root->length != 0 ) return;
-  
+
   if( root->lnode->length == 0 ) treesolver (root->lnode,cons);
   if( root->rnode->length == 0 ) treesolver (root->rnode,cons);
-  
-  root->items = dichosolve(root->lnode->length, root->lnode->items, 
+
+  root->items = dichosolve(root->lnode->length, root->lnode->items,
                            root->rnode->length, root->rnode->items,
                            cons, &(root->length) );
-                      
+
 //  print_tree(root);
 }
 
@@ -168,11 +168,11 @@ item_t* dichosolve(int size1, item_t* first, int size2, item_t* second, knint co
   }
   if ( size1 == -1 ) {
     *rezsize = size2;
-    return copyhash (*rezsize,second);
+    return copyhash (second);
   }
   if ( size2 == -1 ) {
     *rezsize = size1;
-    return copyhash (*rezsize,first);
+    return copyhash (first);
   }
 
   //item_t *its = createitems0 (cons), *fp, *sp;
@@ -183,13 +183,13 @@ item_t* dichosolve(int size1, item_t* first, int size2, item_t* second, knint co
   knint *wp, *pp;
 
   // put all elements of first table
-  for ( fp = first ; *(fp->w) <= cons && fp != NULL ; fp = fp->hh.next ) {
+  for ( fp = first ; fp != NULL && *(fp->w) <= cons ; fp = fp->hh.next ) {
     cnt++;
     sp = copyitem (fp);
     HASH_ADD_KEYPTR ( hh, its, sp->w, KNINT_SIZE, sp );
   }
   // put new elements of second table or replace elements having less value
-  for( fp = second ; *(fp->w) <= cons && fp != NULL ; fp = fp->hh.next ) {
+  for( fp = second ; fp!= NULL && *(fp->w) <= cons ; fp = fp->hh.next ) {
     HASH_FIND (hh, its, fp->w, KNINT_SIZE, tmp);
     if( tmp == NULL ){
       cnt++;

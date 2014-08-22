@@ -18,14 +18,14 @@ int main(int argc, char** argv){
   print_tree(root);
 
   treesolver (root,task->b);
-  //print_tree(root);
+//  print_tree(root); fflush(stdout);
+  HASH_SORT (root->items, value_sort);
   print_hash (root->items);
   //printf("(%d %d)\n",root->items->p[root->length-1],root->items->w[root->length-1]);
 
-  free(root); // not free_tree, because root -> array of all nodes (see node.c: optimal_dichotomic_tree() )
   }
   free_task(&task);
   puts("All freed.\n Bye!");
-  
+
 
 }

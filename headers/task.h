@@ -98,4 +98,6 @@ void print_node(char*, node_t*);
 void free_tree(node_t*);
 void free_node(node_t*);
 
+int value_sort (item_t*, item_t*);
+
 #endif

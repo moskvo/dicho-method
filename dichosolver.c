@@ -22,8 +22,6 @@ node_t* receive_brother(int, node_t*, int*, MPI_Status*);
 head_list_t* reconstruction(node_t *root, int element);
 task_t* readnspread_task(char*, int*);
 
-int value_sort (item_t *a, item_t *b);
-
 int main(int argc, char** argv){
   // mpi headers
   int groupsize, myrank;
@@ -427,8 +425,3 @@ task_t* readnspread_task(char* filename, int *groupsize){
     return mytask;
 } // readnspread_task()
 
-int value_sort (item_t *a, item_t *b) {
-  if ( *(a->p) < *(b->p) ) return (int) -1;
-  if ( *(a->p) > *(b->p) ) return (int) 1;
-  return 0;
-}

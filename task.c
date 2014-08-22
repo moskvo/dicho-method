@@ -40,7 +40,7 @@ item_t* copyitem (item_t *other){
 }
 
 item_t* copyitems (int size, item_t *others) {
-  item_t* r = createitems(size)
+  item_t* r = createitems(size);
   memcpy (r->p,others->p,size*KNINT_SIZE);
   memcpy (r->w,others->w,size*KNINT_SIZE);
   return r;
@@ -49,11 +49,10 @@ item_t* copyitems (int size, item_t *others) {
 item_t* copyhash (item_t *other) {
   item_t *hash = NULL, *ptr, *tmp;
 
-  for ( ptr = others ; ptr != NULL ; ptr = ptr->hh.next ) {
+  for ( ptr = other ; ptr != NULL ; ptr = ptr->hh.next ) {
     tmp = copyitem (ptr);
     HASH_ADD_KEYPTR ( hh, hash, tmp->w, KNINT_SIZE, tmp );
   }
-
   return hash;
 }
 
@@ -301,4 +300,10 @@ void free_tree (node_t *root){
   if( root->rnode != NULL ) free_tree ( root->rnode );
   free_node (root);
   //(*root) = 0;
+}
+
+int value_sort (item_t *a, item_t *b) {
+  if ( *(a->p) < *(b->p) ) return (int) -1;
+  if ( *(a->p) > *(b->p) ) return (int) 1;
+  return 0;
 }
