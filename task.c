@@ -10,7 +10,7 @@ item_t* createitems(int size){
         *w = (knint*)malloc (size*KNINT_SIZE);
   item_t *items = (item_t*)malloc (size*sizeof(item_t)), *i;
   if( (p == 0) || (w == 0) || (items == 0) ) { return 0; }
-  
+
   for( i=items ; i < items+size ; i++ )
   {  i->p = p++; i->w = w++; }
 
@@ -23,7 +23,7 @@ item_t* createitems0(int size){
         *w = (knint*)calloc (size,KNINT_SIZE);
   item_t *items = (item_t*)malloc (size*sizeof(item_t)), *i;
   if( (p == 0) || (w == 0) || (items == 0) ) { return 0; }
-  
+
   for( i=items ; i < items+size ; i++ )
   {  i->p = p++; i->w = w++; }
 
@@ -108,10 +108,10 @@ void addnode (head_list_t *head, node_list_t *node) {
 }
 
 void addlist (head_list_t* head, head_list_t* adjunct) {
-  if ( adjunct == 0 || adjunct->next == 0 ) return;
+  if ( adjunct == NULL || adjunct->next == NULL ) return;
   node_list_t* t = adjunct->next; 
   int i;
-  for ( i=1 ; i<adjunct->count ; i++ ) t = t->next;
+  for ( i = 1 ; i < adjunct->count ; i++ ) t = t->next;
   t->next = head->next;
   head->next = adjunct->next;
   head->count += adjunct->count;
@@ -120,16 +120,16 @@ void addlist (head_list_t* head, head_list_t* adjunct) {
 head_list_t* cartesian (head_list_t* set1, head_list_t* set2) {
   head_list_t *theset = createlisthead ();
   node_list_t *one, *two, *both;
-  for ( one = set1->next ; one != 0 ; one = one->next ){
-    for ( two = set2->next ; two != 0 ; two = two->next ){
+  for ( one = set1->next ; one != NULL ; one = one->next ){
+    for ( two = set2->next ; two != NULL ; two = two->next ){
       both = createlistnode();
       both->items = joinitems (one->length, one->items, two->length, two->items);
       both->length = one->length + two->length;
       addnode ( theset , both );
     }
   }
-  
-  return theset;  
+
+  return theset;
 }
 
 void print_list (head_list_t *head) {
@@ -227,12 +227,23 @@ task_t* readtask(char* filename){
 
 
 
-void free_items(item_t **headp){
+void free_items (item_t **headp){
   if( headp ) {
   free ((*headp)->p);
   free ((*headp)->w);
   free (*headp);
-  *headp = 0;
+  *headp = NULL;
+  }
+}
+
+void free_hash (item_t **hash){
+  if( hash ) {
+  item_t *p, *tmp;
+  HASH_ITER (hh, *hash, p, tmp) {
+    HASH_DEL (*hash, p);
+    free_items (&p);
+  }
+  *hash = NULL;
   }
 }
 
@@ -265,9 +276,10 @@ void print_node (char * pre, node_t *node){
   fputs(pre,stdout);
   if( node->length < 1 ) puts("It hasn't any items");
   else {
-    knint *p = node->items->p, *w = node->items->w;
-    for( ; p < node->items->p + node->length ; p++,w++ )
-    { printf ("(%ld %ld) ",*p, *w); }
+    item_t *item = node->items;
+    for ( ; item != NULL ; item = item->hh.next ) {
+      printf ("(%ld %ld) ",*(item->p),*(item->w));
+    }
     printf("src:%d",node->source);
     puts("");
   }
@@ -280,12 +292,13 @@ void print_node (char * pre, node_t *node){
 }
 
 void free_node (node_t* node){
+  free_hash (&(node->items));
   free (node);
 }
 
 void free_tree (node_t *root){
-  if( (root)->lnode != 0 ) free_tree ( ((root)->lnode) );
-  if( (root)->rnode != 0 ) free_tree ( ((root)->rnode) );
+  if( root->lnode != NULL ) free_tree ( root->lnode );
+  if( root->rnode != NULL ) free_tree ( root->rnode );
   free_node (root);
   //(*root) = 0;
 }

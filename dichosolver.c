@@ -22,6 +22,8 @@ node_t* receive_brother(int, node_t*, int*, MPI_Status*);
 head_list_t* reconstruction(node_t *root, int element);
 task_t* readnspread_task(char*, int*);
 
+int value_sort (item_t *a, item_t *b);
+
 int main(int argc, char** argv){
   // mpi headers
   int groupsize, myrank;
@@ -41,7 +43,7 @@ int main(int argc, char** argv){
   MPI_Status *msgstat = (MPI_Status*)malloc(4*sizeof(MPI_Status)), *statsz = msgstat, *statp = msgstat+1, *statw = msgstat+2, *statb = msgstat+3;
 
 /* get task code for process zero */
-if (myrank == 0) 
+if (myrank == 0)
 {
   mytask = readnspread_task (argv[1], &groupsize);
 
@@ -108,6 +110,8 @@ else {
   if ( myrank == 0 ) {
     if ( root->length == -1 ) { puts("length == -1"); fflush(stdout); }
     else {
+      // sorting
+      
       // print it
       printf("(p=%d w=%d)\n",root->items->p[root->length-1],root->items->w[root->length-1]); fflush(stdout);
     }
@@ -139,7 +143,6 @@ else {
   // we get the optimal knapsack value and weight,
   //  now we must reconstruct elements of it. All sets of elements that leading to optimal knapsack
 
-  //int element, 
   int size;
   knint weight;
   head_list_t *solution;
@@ -194,9 +197,9 @@ else {
   for( ; cnt > 0 ; cnt-- ){
     t = root;
     root = root->lnode;
-    free (t);
+    free_node (t);
   }
-  free (root); // not free_tree, because root -> array of all nodes (see burkov.c: optimal_dichotomic_tree() )
+  free_tree (root);
 
   free_task(&mytask);
   free(msgreq);
@@ -238,6 +241,10 @@ node_t* receive_brother(int from, node_t *root, int *cnt, MPI_Status *stat){
   return head;
 }
 
+/*
+    return all of the sets of elements, whose choice lend to "weight" weight
+     return list of some amount of arrays, not hashes.
+*/
 head_list_t* reconstruction(node_t *root, knint weight){
   head_list_t *rez = createlisthead(), *thead;
   item_t *elem;
@@ -321,8 +328,9 @@ head_list_t* reconstruction(node_t *root, knint weight){
   return rez;
 }
 
-//#### 20/08/2014
-
+/*
+    read the task from "filename" file and divide it within group of "groupsize" size
+*/
 task_t* readnspread_task(char* filename, int *groupsize){
     task_t *mytask;
     MPI_Request *reqs = (MPI_Request*)malloc((*groupsize)*sizeof(MPI_Request));
@@ -344,22 +352,21 @@ task_t* readnspread_task(char* filename, int *groupsize){
     int oldgroup = *groupsize;
     if( size < *groupsize ) *groupsize = size / 2;
     int onesize = size / *groupsize, rest, add, *sizes = (int*)malloc((*groupsize)*sizeof(int)), *psz;
-    
-    rest = size % *groupsize;
-    add = (rest>0)?1:0;
-    for( i=1,psz=sizes ; i < *groupsize ; i++,psz++ ){
-      *psz = onesize+add;
-      MPI_Isend(psz, 1, MPI_INT, i, SIZE_MSG, MPI_COMM_WORLD, reqs+i);
+
+    rest = size % *groupsize; // residue elements
+    add = (rest>0)?1:0; // flag: add 1 to size of elements to current task while residue isn't 0
+    for( i = 1, psz = sizes ; i < *groupsize ; i++, psz++ ){
+      *psz = onesize + add;
+      MPI_Isend (psz, 1, MPI_INT, i, SIZE_MSG, MPI_COMM_WORLD, reqs+i);
       rest--;
       add = (rest>0)?1:0;
     }
     free(sizes);
-    
+
+  // send p
     int onesizebyte = (onesize+1)*KNINT_SIZE;
     knint *p = (knint*)malloc(4*onesizebyte), *p2=p+onesize+1, *w=p2+onesize+1, *w2=w+onesize+1, *tmp, *tmp2;
 
-
-  // send p
       rest = size % *groupsize;
       add = (rest>0)?1:0;
       for( tmp = p ; tmp < p+onesize+add ; tmp++ )
@@ -367,7 +374,7 @@ task_t* readnspread_task(char* filename, int *groupsize){
       MPI_Isend (p, onesize+add, MPI_KNINT, 1, P_MSG, MPI_COMM_WORLD, reqs);
       rest--;
       add = (rest>0)?1:0;
-      
+
       for( i=2 ; i < *groupsize ; i++ ){
         for( tmp = p2 ; tmp < p2+onesize+add ; tmp++ )
           { if( fscanf (file,"%ld", tmp) != 1 ) return 0; }
@@ -380,9 +387,10 @@ task_t* readnspread_task(char* filename, int *groupsize){
       for( tmp = p2 ; tmp < p2+onesize+add ; tmp++ )
           { if( fscanf (file,"%ld", tmp) != 1 ) return 0; }
 
+      // mytask
       mytask = createtask(onesize,b);
       memcpy (mytask->items->p,p2,mytask->length*KNINT_SIZE);
-      
+
     // send w
       rest = size % *groupsize;
       add = (rest>0)?1:0;
@@ -391,7 +399,7 @@ task_t* readnspread_task(char* filename, int *groupsize){
       MPI_Isend (w, onesize+add, MPI_KNINT, 1, W_MSG, MPI_COMM_WORLD, reqs);
       rest--;
       add = (rest>0)?1:0;
-      
+
       for( i=2 ; i < *groupsize ; i++ ){
         for( tmp = w2 ; tmp < w2+onesize+add ; tmp++ )
           { if( fscanf (file,"%ld", tmp) != 1 ) return 0; }
@@ -412,9 +420,15 @@ task_t* readnspread_task(char* filename, int *groupsize){
     for( i=*groupsize ; i < oldgroup ; i++ ){
       MPI_Isend (&rest,1,MPI_INT, i, SIZE_MSG, MPI_COMM_WORLD, reqs+i);
     }
-      
+
     fclose(file);
     free (reqs);
     free (p);
     return mytask;
 } // readnspread_task()
+
+int value_sort (item_t *a, item_t *b) {
+  if ( *(a->p) < *(b->p) ) return (int) -1;
+  if ( *(a->p) > *(b->p) ) return (int) 1;
+  return 0;
+}

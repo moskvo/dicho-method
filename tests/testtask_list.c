@@ -7,7 +7,7 @@ int main(){
   *(items->p) = 1;
   *(items->w) = 10;
   additems(head, 1, items);
-  
+
   items = createitems(2);
   *(items->p) = 2;
   *(items->p+1) = 3;
@@ -17,7 +17,7 @@ int main(){
   node->items = items;
   node->length = 2;
   addnode(head, node);
-  
+
   tail = createlisthead();
   items = createitems(3);
   *(items->p) = 4;
@@ -28,14 +28,14 @@ int main(){
   *(items->w+2) = 5;
   additems(tail,3,items);
   addlist(head,tail);
-  
+
   printf("list size is %d\n",head->count);
   print_list(head);
-  
-  tail->next = 0;
+
+  tail->next = NULL;
   puts("free head"); fflush(stdout);
   free_list(&head);
   puts("free tail"); fflush(stdout);
   free_list(&tail);
-  
+
 }

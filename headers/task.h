@@ -73,12 +73,13 @@ typedef struct task{
   item_t *items;
   int length;
 } task_t;
-  
+
 task_t* createtask (int,knint);
 task_t* readtask(char*);
 
-void free_items(item_t**);
-void free_task(task_t**);
+void free_items (item_t**);
+void free_hash (item_t**);
+void free_task (task_t**);
 
 /*-- tree section --*/
 
