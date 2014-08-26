@@ -19,7 +19,7 @@
 
 
 node_t* receive_brother(int, node_t*, int*, MPI_Status*);
-head_list_t* reconstruction(node_t *root, int element);
+head_list_t* reconstruction(node_t *root, knint weight);
 task_t* readnspread_task(char*, int*);
 
 int main(int argc, char** argv){
@@ -109,7 +109,7 @@ else {
     if ( root->length == -1 ) { puts("length == -1"); fflush(stdout); }
     else {
       // sorting
-      
+
       // print it
       printf("(p=%d w=%d)\n",root->items->p[root->length-1],root->items->w[root->length-1]); fflush(stdout);
     }
@@ -123,6 +123,7 @@ else {
     MPI_Isend(&(root->length), 1, MPI_INT, to, SIZE_MSG, MPI_COMM_WORLD, reqsz);
     if( root->length > 0 ){
       knint *p = (knint*)malloc(root->length*KNINT_SIZE), *w = (knint*)malloc(root->length*KNINT_SIZE), *pp, *pw;
+      item_t *fp;
       for ( fp = root->items, pp = p, pw = w ; fp != NULL ; fp = fp->hh.next, pp++, pw++ ){
         *pp = *(fp->p);
         *pw = *(fp->w);
@@ -132,8 +133,9 @@ else {
       //printf("%d send: ",myrank); print_items(root->length, root->items);
       MPI_Isend( w, root->length, MPI_KNINT,to,W_MSG, MPI_COMM_WORLD, reqw);
       MPI_Waitall(2,reqp,statp);
+      free(p); free(w);
     }
-    MPI_Wait(reqsz,statsz); free(p); free(w);
+    MPI_Wait(reqsz,statsz);
 
   }
 
@@ -214,7 +216,7 @@ node_t* receive_brother(int from, node_t *root, int *cnt, MPI_Status *stat){
   node_t *head = createnodes(2), *thead = head+1;
   MPI_Recv(&(thead->length), 1, MPI_INT, from, SIZE_MSG, MPI_COMM_WORLD, stat);
   if ( thead->length > 0 ) {
-    knint *p = (knint*)malloc(thead->length*KNINT_SIZE), *w = (knint*)malloc(thead->length*KNINT_SIZE), *pp *ww;
+    knint *p = (knint*)malloc(thead->length*KNINT_SIZE), *w = (knint*)malloc(thead->length*KNINT_SIZE), *pp, *ww;
     MPI_Recv(p, thead->length, MPI_KNINT, from, P_MSG, MPI_COMM_WORLD, stat);
     MPI_Recv(w, thead->length, MPI_KNINT, from, W_MSG, MPI_COMM_WORLD, stat);
     thead->items = NULL;
@@ -265,12 +267,12 @@ head_list_t* reconstruction(node_t *root, knint weight){
     HASH_FIND (hh, root->lnode->items, &elem_w, KNINT_SIZE, tmp);
     if ( tmp != NULL && *(tmp->p) == elem_p ){
       free (rez);
-      rez = reconstruction (root->lnode, &elem_w);
+      rez = reconstruction (root->lnode, elem_w);
     }
 
     HASH_FIND (hh, root->rnode->items, &elem_w, KNINT_SIZE, tmp);
     if ( tmp != NULL && *(tmp->p) == elem_p ) {
-      thead = reconstruction (root->rnode, &elem_w);
+      thead = reconstruction (root->rnode, elem_w);
       addlist ( rez, thead );
       thead->next = NULL;
       free_list (&thead);
@@ -279,8 +281,8 @@ head_list_t* reconstruction(node_t *root, knint weight){
     if ( (lsize != -1) && (rsize != -1) ) {
       head_list_t *lhead, *rhead;
       for ( tmp = root->lnode->items ; (*(tmp->w) <= elem_w) && tmp != NULL ; tmp = tmp->hh.next ) {
-        for ( tm2 = root->rnode->items ; ( (*(tmp->w)+*(tm2->w) <= elem_w) && tm2 != NULL ; tm2 = tm2->hh.next ) {
-          if ( ( *(tmp->w) + *(tm2->w) == elem_w ) && ( *(tmp->p) + *(tm2->p)) == elem_p ) ) {
+        for ( tm2 = root->rnode->items ; (*(tmp->w)+*(tm2->w) <= elem_w) && tm2 != NULL ; tm2 = tm2->hh.next ) {
+          if ( (*(tmp->w) + *(tm2->w) == elem_w) && (*(tmp->p) + *(tm2->p)) == elem_p ) {
             lhead = reconstruction (root->lnode, *(tmp->w));
             rhead = reconstruction (root->rnode, *(tm2->w));
             thead = cartesian ( lhead, rhead );
