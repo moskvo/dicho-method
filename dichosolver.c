@@ -44,7 +44,6 @@ int main(int argc, char** argv){
 if (myrank == 0)
 {
   mytask = readnspread_task (argv[1], &groupsize);
-
 }
 
 /* get task code for process one */
@@ -109,9 +108,9 @@ else {
     if ( root->length == -1 ) { puts("length == -1"); fflush(stdout); }
     else {
       // sorting
-
+      HASH_SORT ( root->items, value_sort );
       // print it
-      printf("(p=%d w=%d)\n",root->items->p[root->length-1],root->items->w[root->length-1]); fflush(stdout);
+      printf ("(p=%d w=%d)\n",*(root->items->p),*(root->items->w)); fflush(stdout);
     }
 
   }
@@ -153,11 +152,11 @@ else {
     solution = reconstruction ( root, *(root->items->w) );
 
     puts("0: print first solution."); fflush(stdout);
-    print_items (solution->next->length, solution->next->items);
+    print_items (solution->next->length, solution->next->items); fflush (stdout);
     // what is it? like quit signal
     int i;
     knint killsig = -1;
-    for( i = 1; i < groupsize ; i++ ){
+    for( i = 0 ; i < groupsize ; i++ ){
       MPI_Isend (&killsig, 1, MPI_KNINT, i, RECONSTR_MSG, MPI_COMM_WORLD, reqsz);
     }
   }
@@ -187,7 +186,7 @@ else {
   }// else of myrank == 0
 
   // finalizing...
-  printf ("%d: finalizing...",myrank);
+  printf ("%d: finalizing...",myrank); fflush (stdout);
 
   //free solution(s)
   if ( weight > -1 )  free_list (&solution);
@@ -255,14 +254,12 @@ head_list_t* reconstruction(node_t *root, knint weight){
   MPI_Status s,s2, *stat = &s,*stat2 = &s2;
 
   // if root is not leaf
-  if ( root->lnode != 0 && root->rnode != 0 ){
+  if ( root->lnode != NULL && root->rnode != NULL ){
 
     knint *lp, *lw, *rp, *rw;
 
-    item_t *ritems = root->rnode->items, *litems = root->lnode->items, *tmp, *tm2;
-    int      rsize = root->rnode->length,  lsize = root->lnode->length;
-
-    int lelem, relem;
+    item_t *tmp, *tm2;
+    int rsize = root->rnode->length,  lsize = root->lnode->length;
 
     HASH_FIND (hh, root->lnode->items, &elem_w, KNINT_SIZE, tmp);
     if ( tmp != NULL && *(tmp->p) == elem_p ){
@@ -280,8 +277,8 @@ head_list_t* reconstruction(node_t *root, knint weight){
 
     if ( (lsize != -1) && (rsize != -1) ) {
       head_list_t *lhead, *rhead;
-      for ( tmp = root->lnode->items ; (*(tmp->w) <= elem_w) && tmp != NULL ; tmp = tmp->hh.next ) {
-        for ( tm2 = root->rnode->items ; (*(tmp->w)+*(tm2->w) <= elem_w) && tm2 != NULL ; tm2 = tm2->hh.next ) {
+      for ( tmp = root->lnode->items ; /*(*(tmp->w) <= elem_w) && cause not sorted! */tmp != NULL ; tmp = tmp->hh.next ) {
+        for ( tm2 = root->rnode->items ; /*(*(tmp->w)+*(tm2->w) <= elem_w) && not sorted! */tm2 != NULL ; tm2 = tm2->hh.next ) {
           if ( (*(tmp->w) + *(tm2->w) == elem_w) && (*(tmp->p) + *(tm2->p)) == elem_p ) {
             lhead = reconstruction (root->lnode, *(tmp->w));
             rhead = reconstruction (root->rnode, *(tm2->w));
@@ -290,7 +287,7 @@ head_list_t* reconstruction(node_t *root, knint weight){
             //print_list(rhead);
             //print_list(cart);fflush(stdout);
             addlist ( rez, thead );
-            thead->next = 0;
+            thead->next = NULL;
             free_list ( &thead );
             free_list ( &lhead );
             free_list ( &rhead );

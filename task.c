@@ -108,7 +108,7 @@ void addnode (head_list_t *head, node_list_t *node) {
 
 void addlist (head_list_t* head, head_list_t* adjunct) {
   if ( adjunct == NULL || adjunct->next == NULL ) return;
-  node_list_t* t = adjunct->next; 
+  node_list_t* t = adjunct->next;
   int i;
   for ( i = 1 ; i < adjunct->count ; i++ ) t = t->next;
   t->next = head->next;
@@ -303,7 +303,7 @@ void free_tree (node_t *root){
 }
 
 int value_sort (item_t *a, item_t *b) {
-  if ( *(a->p) < *(b->p) ) return (int) -1;
-  if ( *(a->p) > *(b->p) ) return (int) 1;
+  if ( *(a->p) < *(b->p) ) return (int) 1;
+  if ( *(a->p) > *(b->p) ) return (int) -1;
   return 0;
 }
