@@ -76,6 +76,7 @@ typedef struct task{
 
 task_t* createtask (int,knint);
 task_t* readtask(char*);
+void print_task (task_t*);
 
 void free_items (item_t**);
 void free_hash (item_t**);

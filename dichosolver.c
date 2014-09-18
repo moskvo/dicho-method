@@ -69,7 +69,7 @@ else {
     MPI_Waitall (2,reqp,statp);
 }
 
-  //printf("%d readed. b=%ld, size=%d. solving...\n",myrank,mytask->b,mytask->length); fflush(stdout);
+  printf("%d readed. b=%ld, size=%d. solving...\n",myrank,mytask->b,mytask->length); fflush(stdout);
 
   //{ solve mytask
   node_t *root;
@@ -79,7 +79,8 @@ else {
   treesolver (root,mytask->b);
   //}
 
-  //printf("%d:\n",myrank);
+  printf("%d: self solved\n",myrank); fflush(stdout);
+  
   //print_tree(root); fflush(stdout);  //printf("%d: local task solved. Solving parallel...\n", myrank); fflush(stdout);
 
   // get elements(solutions) from other processes and solve again with it
@@ -110,7 +111,7 @@ else {
       // sorting
       HASH_SORT ( root->items, value_sort );
       // print it
-      printf ("(p=%d w=%d)\n",*(root->items->p),*(root->items->w)); fflush(stdout);
+      printf ("knapsack: (p=%d w=%d)\n",*(root->items->p),*(root->items->w)); //fflush(stdout);
     }
 
   }
@@ -151,24 +152,26 @@ else {
     // reconstruction() return head to list of all sets of solutions.
     solution = reconstruction ( root, *(root->items->w) );
 
-    puts("0: print first solution."); fflush(stdout);
-    print_items (solution->next->length, solution->next->items); fflush (stdout);
+    printf ("I found %d solutions:\n",solution->count); //fflush(stdout);
+    print_list (solution); //fflush (stdout);
     // what is it? like quit signal
     int i;
-    knint killsig = -1;
+    knint *killsig = (knint*) malloc(groupsize*KNINT_SIZE);
     for( i = 0 ; i < groupsize ; i++ ){
-      MPI_Isend (&killsig, 1, MPI_KNINT, i, RECONSTR_MSG, MPI_COMM_WORLD, reqsz);
+      *(killsig+i) = -1;
+      MPI_Isend ((killsig+i), 1, MPI_KNINT, i, RECONSTR_MSG, MPI_COMM_WORLD, reqsz);
     }
+    free (killsig);
   }
   // other processes are waiting for reconstruction signal
   else {
     MPI_Recv (&weight, 1, MPI_KNINT, MPI_ANY_SOURCE, RECONSTR_MSG, MPI_COMM_WORLD, statb);
     if( weight > -1 ){
-      printf("%d: i receive 'reconstruction' message for weight: %ld\n",myrank,weight); fflush(stdout);
+      //printf("%d: i receive 'reconstruction' message for weight: %ld\n",myrank,weight); fflush(stdout);
       //print_tree(root); fflush(stdout);
       solution = reconstruction(root, weight);
-      printf("%d: i sending reconstructed message in size %d\n",myrank,solution->count);
-      print_list (solution); fflush(stdout);
+      //printf("%d: i sending reconstructed message in size %d\n",myrank,solution->count);
+      //print_list (solution); fflush(stdout);
       MPI_Isend (&(solution->count), 1, MPI_INT, statb->MPI_SOURCE, SOL_SIZE_MSG, MPI_COMM_WORLD,reqb);
       node_list_t *i;
       //int ct = 0;
@@ -185,26 +188,26 @@ else {
     }// if element > -1
   }// else of myrank == 0
 
-  // finalizing...
-  printf ("%d: finalizing...",myrank); fflush (stdout);
+  printf ("%d: finalizing...\n",myrank); fflush (stdout);
 
-  //free solution(s)
+  puts ("free solution(s)"); fflush(stdout);
   if ( weight > -1 )  free_list (&solution);
 
-  //free tree
+  puts ("free tree"); fflush(stdout);
   node_t *t;
   for( ; cnt > 0 ; cnt-- ){
     t = root;
     root = root->lnode;
     free_node (t);
   }
-  free_tree (root);
+  free (root);//free_tree (root);
 
+  //puts ("free some var"); fflush(stdout);
   free_task(&mytask);
   free(msgreq);
   free(msgstat);
 
-  puts("ok"); fflush (stdout);
+  //puts("ok"); fflush (stdout);
   // mpi tails
   MPI_Finalize ();
   return 0;
@@ -314,7 +317,7 @@ head_list_t* reconstruction(node_t *root, knint weight){
         node->items = items;
         addnode ( rez, node );
       }
-      printf("solution from %d received\n",root->source); fflush(stdout);
+      //printf("solution from %d received\n",root->source); fflush(stdout);
     } else { // if we reach leaf
       additems ( rez, 1, copyitem(elem) );
     }

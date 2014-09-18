@@ -180,10 +180,10 @@ task_t* readtask(char* filename){
 
     knint b;
     if( fscanf(file,"%ld",&b) != 1 ) return 0;
-    
+
     int size;
     if( fscanf(file,"%d",&size) != 1 ) return 0;
-    
+
     task = createtask(size,b);
 
     item_t *head = task->items;
@@ -223,6 +223,12 @@ task_t* readtask(char* filename){
 
   return task;
 }*/
+
+void print_task (task_t* task) {
+  puts("task");
+  printf ("  b = %ld\n  length = %d", task->b, task->length);
+  print_items (task->length, task->items);
+}
 
 
 
