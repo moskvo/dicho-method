@@ -2,6 +2,13 @@
 #include <stdlib.h>
 #include "mpi.h"
 
+#define NO_DEBUG 0
+#define LOW_DEBUG 1
+#define MID_DEBUG 2
+#define HI_DEBUG 3
+
+#define DBGLVL LOW_DEBUG
+
 #include "burkov.h"
 
 #define SIZE_MSG 100
@@ -11,16 +18,17 @@
 #define RECONSTR_MSG 200
 #define SOL_SIZE_MSG 201
 
-#ifdef KNINT_INT
+#if defined(KNINT_INT)
 #define MPI_KNINT MPI_INT
-#else
+#elif defined(KNINT_LONG)
 #define MPI_KNINT MPI_LONG
 #endif
 
 
-node_t* receive_brother(int, node_t*, int*, MPI_Status*);
-head_list_t* reconstruction(node_t *root, knint weight);
-task_t* readnspread_task(char*, int*);
+node_t* receive_brother (int, node_t*, int*, MPI_Status*);
+head_list_t* reconstruction (node_t *root, knint weight, int);
+task_t* readnspread_task (char*, int*);
+task_t* readnspread_task_parallel (char*, int*);
 
 int main(int argc, char** argv){
   // mpi headers
@@ -43,7 +51,7 @@ int main(int argc, char** argv){
 /* get task code for process zero */
 if (myrank == 0)
 {
-  mytask = readnspread_task (argv[1], &groupsize);
+  mytask = readnspread_task_parallel (argv[1], &groupsize);
 }
 
 /* get task code for process one */
@@ -69,7 +77,9 @@ else {
     MPI_Waitall (2,reqp,statp);
 }
 
+  #if DBGLVL >= LOW_DEBUG
   printf("%d readed. b=%ld, size=%d. solving...\n",myrank,mytask->b,mytask->length); fflush(stdout);
+  #endif
 
   //{ solve mytask
   node_t *root;
@@ -77,11 +87,15 @@ else {
   { puts("Can't build optdichotree"); fflush(stdout); }
 
   treesolver (root,mytask->b);
+
+  #if DBGLVL >= LOW_DEBUG
+    printf("%d: local task solved. Solving parallel...\n",myrank); fflush(stdout);
+  #endif
   //}
 
-  printf("%d: self solved\n",myrank); fflush(stdout);
-  
-  //print_tree(root); fflush(stdout);  //printf("%d: local task solved. Solving parallel...\n", myrank); fflush(stdout);
+  #if DBGLVL >= MID_DEBUG
+    print_tree(root); fflush(stdout);
+  #endif
 
   // get elements(solutions) from other processes and solve again with it
   int frontier = groupsize, group;
@@ -97,10 +111,14 @@ else {
         root = receive_brother (group-1, root, &cnt, statsz);
       }
 
-      //if ( myrank == 0 ) { puts("-"); fflush(stdout); if(root->rnode->length > 0) print_items (root->rnode->length, root->rnode->items); else puts("0");/*print_tree(root);*/ fflush(stdout); }
+      #if DBGLVL >= HI_DEBUG
+        if ( myrank == 0 ) { puts("-"); fflush(stdout); if(root->rnode->length > 0) print_items (root->rnode->length, root->rnode->items); else puts("0"); fflush(stdout); }
+      #endif
       // solve them all
       treesolver(root,mytask->b);
-      //if ( myrank == 0 ) { puts("par solved."); fflush(stdout); }
+      #if DBGLVL >= HI_DEBUG
+        if ( myrank == 0 ) { puts("par solved."); fflush(stdout); }
+      #endif
     }
   }
 
@@ -139,7 +157,9 @@ else {
 
   }
 
-  printf("%d: solution reconstruction\n",myrank); fflush(stdout);
+  #if DBGLVL >=LOW_DEBUG
+    printf("%d: solution reconstruction\n",myrank); fflush(stdout);
+  #endif
   // we get the optimal knapsack value and weight,
   //  now we must reconstruct elements of it. All sets of elements that leading to optimal knapsack
 
@@ -150,10 +170,14 @@ else {
   if ( myrank == 0 ){
     //element = root->length-1;
     // reconstruction() return head to list of all sets of solutions.
-    solution = reconstruction ( root, *(root->items->w) );
+    #if DBGLVL >= LOW_DEBUG
+      printf("%d:size of top node: %d\n",myrank,root->length);
+    #endif
+    solution = reconstruction ( root, *(root->items->w), myrank);
 
     printf ("I found %d solutions:\n",solution->count); //fflush(stdout);
     print_list (solution); //fflush (stdout);
+
     // what is it? like quit signal
     int i;
     knint *killsig = (knint*) malloc(groupsize*KNINT_SIZE);
@@ -167,33 +191,43 @@ else {
   else {
     MPI_Recv (&weight, 1, MPI_KNINT, MPI_ANY_SOURCE, RECONSTR_MSG, MPI_COMM_WORLD, statb);
     if( weight > -1 ){
-      //printf("%d: i receive 'reconstruction' message for weight: %ld\n",myrank,weight); fflush(stdout);
-      //print_tree(root); fflush(stdout);
-      solution = reconstruction(root, weight);
-      //printf("%d: i sending reconstructed message in size %d\n",myrank,solution->count);
-      //print_list (solution); fflush(stdout);
+      #if DBGLVL >= LOW_DEBUG
+        printf("%d: i receive 'reconstruction' message for weight: %ld\n",myrank,weight); fflush(stdout);
+      #endif
+      #if DBGLVL >= MID_DEBUG
+        print_tree(root); fflush(stdout);
+        printf("%d:size of top node: %d\n",myrank,root->length);
+      #endif
+      solution = reconstruction(root, weight, myrank);
+      #if DBGLVL >= LOW_DEBUG
+	printf("%d: i sending reconstructed message in size %d\n",myrank,solution->count);
+      #endif
+      #if DBGLVL >=HI_DEBUG
+        print_list (solution); fflush(stdout);
+      #endif
       MPI_Isend (&(solution->count), 1, MPI_INT, statb->MPI_SOURCE, SOL_SIZE_MSG, MPI_COMM_WORLD,reqb);
       node_list_t *i;
-      //int ct = 0;
       for ( i = solution->next ; i != NULL ; i = i->next ){
         if ( i->length < 1 ) { printf("%d: node's length = %d\n",myrank,i->length); fflush(stdout); }
         MPI_Isend (&(i->length), 1, MPI_INT, statb->MPI_SOURCE, SIZE_MSG, MPI_COMM_WORLD, reqsz);
         MPI_Isend (i->items->p, i->length, MPI_KNINT, statb->MPI_SOURCE, P_MSG, MPI_COMM_WORLD, reqp);
         MPI_Isend (i->items->w, i->length, MPI_KNINT, statb->MPI_SOURCE, W_MSG, MPI_COMM_WORLD, reqw);
         MPI_Waitall (3,reqsz,statsz);
-        //ct++;
         //printf("%d: send %d\n",myrank,ct);
       }
 
     }// if element > -1
   }// else of myrank == 0
 
+  #if DBGLVL >= LOW_DEBUG
   printf ("%d: finalizing...\n",myrank); fflush (stdout);
-
   puts ("free solution(s)"); fflush(stdout);
+  #endif
   if ( weight > -1 )  free_list (&solution);
 
+  #if DBGLVL >= LOW_DEBUG
   puts ("free tree"); fflush(stdout);
+  #endif
   node_t *t;
   for( ; cnt > 0 ; cnt-- ){
     t = root;
@@ -202,12 +236,16 @@ else {
   }
   free (root);//free_tree (root);
 
-  //puts ("free some var"); fflush(stdout);
+  #if DBGLVL >= LOW_DEBUG
+    puts ("free some var"); fflush(stdout);
+  #endif
   free_task(&mytask);
   free(msgreq);
   free(msgstat);
 
-  //puts("ok"); fflush (stdout);
+  #if DBGLVL >= LOW_DEBUG
+  printf("%d: ok\n", myrank); fflush (stdout);
+  #endif
   // mpi tails
   MPI_Finalize ();
   return 0;
@@ -247,7 +285,7 @@ node_t* receive_brother(int from, node_t *root, int *cnt, MPI_Status *stat){
     return all of the sets of elements, whose choice lend to "weight" weight
      return list of some amount of arrays, not hashes.
 */
-head_list_t* reconstruction(node_t *root, knint weight){
+head_list_t* reconstruction(node_t *root, knint weight, int rank){
   head_list_t *rez = createlisthead(), *thead;
   item_t *elem;
   HASH_FIND (hh, root->items, &weight, KNINT_SIZE, elem);
@@ -267,12 +305,12 @@ head_list_t* reconstruction(node_t *root, knint weight){
     HASH_FIND (hh, root->lnode->items, &elem_w, KNINT_SIZE, tmp);
     if ( tmp != NULL && *(tmp->p) == elem_p ){
       free (rez);
-      rez = reconstruction (root->lnode, elem_w);
+      rez = reconstruction (root->lnode, elem_w, rank);
     }
 
     HASH_FIND (hh, root->rnode->items, &elem_w, KNINT_SIZE, tmp);
     if ( tmp != NULL && *(tmp->p) == elem_p ) {
-      thead = reconstruction (root->rnode, elem_w);
+      thead = reconstruction (root->rnode, elem_w, rank);
       addlist ( rez, thead );
       thead->next = NULL;
       free_list (&thead);
@@ -283,12 +321,14 @@ head_list_t* reconstruction(node_t *root, knint weight){
       for ( tmp = root->lnode->items ; /*(*(tmp->w) <= elem_w) && cause not sorted! */tmp != NULL ; tmp = tmp->hh.next ) {
         for ( tm2 = root->rnode->items ; /*(*(tmp->w)+*(tm2->w) <= elem_w) && not sorted! */tm2 != NULL ; tm2 = tm2->hh.next ) {
           if ( (*(tmp->w) + *(tm2->w) == elem_w) && (*(tmp->p) + *(tm2->p)) == elem_p ) {
-            lhead = reconstruction (root->lnode, *(tmp->w));
-            rhead = reconstruction (root->rnode, *(tm2->w));
+            lhead = reconstruction (root->lnode, *(tmp->w), rank);
+            rhead = reconstruction (root->rnode, *(tm2->w), rank);
             thead = cartesian ( lhead, rhead );
-            //print_list(lhead);
-            //print_list(rhead);
-            //print_list(cart);fflush(stdout);
+            #if DBGLVL >= MID_DEBUG
+              print_list(lhead);
+              print_list(rhead);
+              print_list(cart);fflush(stdout);
+            #endif
             addlist ( rez, thead );
             thead->next = NULL;
             free_list ( &thead );
@@ -301,6 +341,9 @@ head_list_t* reconstruction(node_t *root, knint weight){
   } else if ( root->lnode == NULL && root->rnode == NULL ){
     // if we get this node from other process
     if ( root->source > -1 ) {
+      #if DBGLVL >= MID_DEBUG
+      printf ("%d -> %d\n",rank,root->source); fflush (stdout);
+      #endif
       MPI_Isend (&elem_w, 1, MPI_KNINT, root->source, RECONSTR_MSG, MPI_COMM_WORLD, req);
       node_list_t *node;
       int rezcount;
@@ -317,14 +360,18 @@ head_list_t* reconstruction(node_t *root, knint weight){
         node->items = items;
         addnode ( rez, node );
       }
-      //printf("solution from %d received\n",root->source); fflush(stdout);
+      #if DBGLVL >= MID_DEBUG
+        printf("solution from %d received\n",root->source); fflush(stdout);
+      #endif
     } else { // if we reach leaf
       additems ( rez, 1, copyitem(elem) );
     }
   } else {
     puts("reconstruction(): one child null and other not null :/");
   }
-  //puts("-"); print_tree(root); puts("+"); print_list(rez); fflush(stdout);
+  #if DBGLVL >= HI_DEBUG
+    puts("-"); print_tree(root); puts("+"); print_list(rez); fflush(stdout);
+  #endif
   return rez;
 }
 
@@ -427,3 +474,104 @@ task_t* readnspread_task(char* filename, int *groupsize){
     return mytask;
 } // readnspread_task()
 
+/*
+    read the task from "filename" file and parallel divide it within group of "groupsize" size
+*/
+task_t* readnspread_task_parallel(char* filename, int *groupsize){
+    task_t *mytask;
+    MPI_Request *reqs = (MPI_Request*)malloc((*groupsize)*sizeof(MPI_Request));
+    MPI_Status *stats = (MPI_Status*)malloc((*groupsize)*sizeof(MPI_Status));
+
+    FILE *file;
+    if( (file = fopen(filename,"r")) == 0 ) return 0;
+
+    int i;
+    knint b;
+  // puts("send b"); fflush(stdout);
+    if( fscanf(file,"%ld",&b) != 1 ) return 0;
+    MPI_Bcast (&b, 1, MPI_KNINT, 0, MPI_COMM_WORLD);
+    //MPI_Waitall ((*groupsize)-1,reqs+1,stats+1);
+
+  // puts("send size"); fflush(stdout);
+    int size;
+    if( fscanf(file,"%d",&size) != 1 ) return 0;
+    // printf("Size=%d\n",size); fflush(stdout);
+      // if groupsize > size then to half groupsize
+      int oldgroup = *groupsize;
+      if( size < *groupsize ) {  *groupsize = size / 2;  }
+    int onesize = size / *groupsize, rest,
+        *sizes = (int*)malloc((*groupsize)*sizeof(int)), *psz;
+
+    rest = (size % *groupsize); // residue elements
+    sizes[0] = onesize + (rest>0?1:0);
+  // printf("sizes[0]=%d\n",sizes[0]);
+    rest--;
+    for( i = 1, psz = sizes+1 ; i < *groupsize ; i++, psz++ ){
+      (*psz) = onesize + (rest>0?1:0);
+      MPI_Send (psz, 1, MPI_INT, i, SIZE_MSG, MPI_COMM_WORLD);
+      rest--;
+    }
+
+  // puts("read p"); fflush(stdout);
+    knint **ps = (knint**)malloc((*groupsize)*sizeof(knint*)),
+          **ws = (knint**)malloc((*groupsize)*sizeof(knint*)), **tmps, **tmws;
+    rest = size % *groupsize;
+    for ( i = 0,tmps=ps,tmws=ws ; i < *groupsize ; i++,tmps++,tmws++ ) {
+      *tmps = (knint*)malloc(sizes[i]*KNINT_SIZE);
+      *tmws = (knint*)malloc(sizes[i]*KNINT_SIZE);
+    }
+
+      int proc = 0, num = 0;
+      for( i = 0 ; i < size ; i++ ) {
+        if( fscanf (file,"%ld", ps[proc]+num) != 1 ) return 0;
+        proc++;
+        if( proc == *groupsize ){
+          proc = 0;
+          num++;
+        }
+      }
+  // puts("sending p"); fflush(stdout);
+    knint *p;
+      for( i = 1 ; i < *groupsize ; i++ ) {
+        MPI_Isend (ps[i], sizes[i], MPI_KNINT, i, P_MSG, MPI_COMM_WORLD, reqs+i);
+      }
+
+  // puts("mytask"); fflush(stdout);
+      mytask = createtask(sizes[0],b);
+      memcpy (mytask->items->p,ps[0],mytask->length*KNINT_SIZE);
+
+  // puts("read w"); fflush(stdout);
+      proc = 0;
+      num = 0;
+      for( i = 0 ; i < size ; i++ ) {
+        if( fscanf (file,"%ld", ws[proc]+num) != 1 ) return 0;
+        proc++;
+        if( proc == *groupsize ){
+          proc = 0;
+          num++;
+        }
+      }
+  // sending w
+      MPI_Waitall ((*groupsize)-1,reqs+1,stats+1);
+      for( i = 1 ; i < *groupsize ; i++ ) {
+        MPI_Isend (ws[i], sizes[i], MPI_KNINT, i, W_MSG, MPI_COMM_WORLD, reqs+i);
+      }
+
+      memcpy (mytask->items->w,ws[0],mytask->length*KNINT_SIZE);
+
+  // puts("close unnecessary workers"); fflush(stdout);
+    //MPI_Waitall ((*groupsize)-1,reqs+1,stats+1);
+    rest = -1;
+    for( i = *groupsize ; i < oldgroup ; i++ ){
+      MPI_Isend (&rest,1,MPI_INT, i, SIZE_MSG, MPI_COMM_WORLD, reqs+i);
+    }
+
+    for( i = 0 ; i < *groupsize ; i++ ) { free(ps[i]); free(ws[i]); }
+    free (ps); free (ws);
+
+    fclose(file);
+    free (reqs);
+    free (stats);
+    free (sizes);
+    return mytask;
+} // readnspread_task_parallel()
