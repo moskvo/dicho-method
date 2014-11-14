@@ -116,21 +116,6 @@ void addlist (head_list_t* head, head_list_t* adjunct) {
   head->count += adjunct->count;
 }
 
-head_list_t* cartesian (head_list_t* set1, head_list_t* set2) {
-  head_list_t *theset = createlisthead ();
-  node_list_t *one, *two, *both;
-  for ( one = set1->next ; one != NULL ; one = one->next ){
-    for ( two = set2->next ; two != NULL ; two = two->next ){
-      both = createlistnode();
-      both->items = joinitems (one->length, one->items, two->length, two->items);
-      both->length = one->length + two->length;
-      addnode ( theset , both );
-    }
-  }
-
-  return theset;
-}
-
 void print_list (head_list_t *head) {
   puts("[");
   if ( head->count > 0 ) {
@@ -152,6 +137,40 @@ void free_list (head_list_t **head) {
     free_items (&(p->items));
     free (p);
   }
+}
+
+/*-- super list section --*/
+
+const size_t NODESUPLIST_SIZE = sizeof(node_suplist_t),
+             HEADSUPLIST_SIZE = sizeof(head_suplist_t);
+
+node_suplist_t* createsuplistnode() {
+  return (node_suplist_t*) calloc (1, NODESUPLIST_SIZE);
+}
+head_suplist_t* createlisthead() {
+  return (head_list_t*) calloc (1, HEADSUPLIST_SIZE);
+}
+void addlist (head_suplist_t* head, head_list_t* adjunct) {
+  if ( adjunct == NULL ) return;
+  node_suplist_t *node = createsuplistnode();
+  node->list = adjunct;
+  node->next = head;
+  head->next = node;;
+}
+
+void cartesian (head_suplist_t *set, head_suplist_t *set1, head_suplist_t *set2) {
+  //head_list_t *theset = createlisthead ();
+  node_suplist_t *one, *two, *both;
+  for ( one = set1->next ; one != NULL ; one = one->next ){
+    for ( two = set2->next ; two != NULL ; two = two->next ){
+      both = createlistnode();
+      both->items = joinitems (one->length, one->items, two->length, two->items);
+      both->length = one->length + two->length;
+      addnode ( theset , both );
+    }
+  }
+
+  return theset;
 }
 
 /*-- task section --*/

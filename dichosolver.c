@@ -160,12 +160,13 @@ else {
   #if DBGLVL >=LOW_DEBUG
     printf("%d: solution reconstruction\n",myrank); fflush(stdout);
   #endif
+
   // we get the optimal knapsack value and weight,
   //  now we must reconstruct elements of it. All sets of elements that leading to optimal knapsack
 
   int size;
   knint weight;
-  head_list_t *solution;
+  head_list_t *solution = createlisthead();
   // process zero run the reconstruction
   if ( myrank == 0 ){
     //element = root->length-1;
@@ -173,7 +174,8 @@ else {
     #if DBGLVL >= LOW_DEBUG
       printf("%d:size of top node: %d\n",myrank,root->length);
     #endif
-    solution = reconstruction ( root, *(root->items->w), myrank);
+
+    reconstruction ( solution, root, *(root->items->w), myrank);
 
     printf ("I found %d solutions:\n",solution->count); //fflush(stdout);
     print_list (solution); //fflush (stdout);
@@ -198,7 +200,9 @@ else {
         print_tree(root); fflush(stdout);
         printf("%d:size of top node: %d\n",myrank,root->length);
       #endif
-      solution = reconstruction(root, weight, myrank);
+
+      reconstruction(solution, root, weight, myrank);
+
       #if DBGLVL >= LOW_DEBUG
 	printf("%d: i sending reconstructed message in size %d\n",myrank,solution->count);
       #endif
@@ -223,7 +227,7 @@ else {
   printf ("%d: finalizing...\n",myrank); fflush (stdout);
   puts ("free solution(s)"); fflush(stdout);
   #endif
-  if ( weight > -1 )  free_list (&solution);
+  #???if ( weight > -1 )  free_list (&solution);
 
   #if DBGLVL >= LOW_DEBUG
   puts ("free tree"); fflush(stdout);
@@ -285,8 +289,10 @@ node_t* receive_brother(int from, node_t *root, int *cnt, MPI_Status *stat){
     return all of the sets of elements, whose choice lend to "weight" weight
      return list of some amount of arrays, not hashes.
 */
-head_list_t* reconstruction(node_t *root, knint weight, int rank){
-  head_list_t *rez = createlisthead(), *thead;
+void reconstruction(head_list_t* rez, node_t *root, knint weight, int rank){
+  //head_list_t *rez = createlisthead(), 
+  head_list_t *thead = createlisthead();
+  // elem = element on top of root with 'weight'=weight
   item_t *elem;
   HASH_FIND (hh, root->items, &weight, KNINT_SIZE, elem);
   knint elem_p = *(elem->p), elem_w = *(elem->w);
@@ -302,47 +308,55 @@ head_list_t* reconstruction(node_t *root, knint weight, int rank){
     item_t *tmp, *tm2;
     int rsize = root->rnode->length,  lsize = root->lnode->length;
 
+    // look for simple match in left subtree
     HASH_FIND (hh, root->lnode->items, &elem_w, KNINT_SIZE, tmp);
     if ( tmp != NULL && *(tmp->p) == elem_p ){
-      free (rez);
-      rez = reconstruction (root->lnode, elem_w, rank);
+      //free (rez);
+      //rez = reconstruction (root->lnode, elem_w, rank);
+      reconstruction (rez, root->lnode, elem_w, rank);
     }
 
+    // look for simple match in right subtree
     HASH_FIND (hh, root->rnode->items, &elem_w, KNINT_SIZE, tmp);
     if ( tmp != NULL && *(tmp->p) == elem_p ) {
-      thead = reconstruction (root->rnode, elem_w, rank);
+      reconstruction (thead, root->rnode, elem_w, rank);
       addlist ( rez, thead );
       thead->next = NULL;
-      free_list (&thead);
+      //free_list (&thead);
     }
 
+    // look for total match
     if ( (lsize != -1) && (rsize != -1) ) {
-      head_list_t *lhead, *rhead;
+      head_list_t *lhead = createlisthead(), *rhead = createlisthead();
       for ( tmp = root->lnode->items ; /*(*(tmp->w) <= elem_w) && cause not sorted! */tmp != NULL ; tmp = tmp->hh.next ) {
         for ( tm2 = root->rnode->items ; /*(*(tmp->w)+*(tm2->w) <= elem_w) && not sorted! */tm2 != NULL ; tm2 = tm2->hh.next ) {
           if ( (*(tmp->w) + *(tm2->w) == elem_w) && (*(tmp->p) + *(tm2->p)) == elem_p ) {
-            lhead = reconstruction (root->lnode, *(tmp->w), rank);
-            rhead = reconstruction (root->rnode, *(tm2->w), rank);
-            thead = cartesian ( lhead, rhead );
+            reconstruction (lhead, root->lnode, *(tmp->w), rank);
+            reconstruction (rhead, root->rnode, *(tm2->w), rank);
+            cartesian (thead, lhead, rhead );
             #if DBGLVL >= MID_DEBUG
-              print_list(lhead);
-              print_list(rhead);
-              print_list(cart);fflush(stdout);
+            	print_list(lhead);
+            	print_list(rhead);
+            	print_list(cart); fflush(stdout);
             #endif
             addlist ( rez, thead );
             thead->next = NULL;
-            free_list ( &thead );
+            lhead->next = NULL;
+            rhead->next = NULL;
+            /*free_list ( &thead );
             free_list ( &lhead );
-            free_list ( &rhead );
+            free_list ( &rhead );*/
           }
         } // for rnode
       } // for lnode
-    }// if
-  } else if ( root->lnode == NULL && root->rnode == NULL ){
+    }// if total match
+  } 
+  // if root is leaf
+  else if ( root->lnode == NULL && root->rnode == NULL ){
     // if we get this node from other process
     if ( root->source > -1 ) {
       #if DBGLVL >= MID_DEBUG
-      printf ("%d -> %d\n",rank,root->source); fflush (stdout);
+        printf ("%d -> %d\n",rank,root->source); fflush (stdout);
       #endif
       MPI_Isend (&elem_w, 1, MPI_KNINT, root->source, RECONSTR_MSG, MPI_COMM_WORLD, req);
       node_list_t *node;
@@ -364,7 +378,7 @@ head_list_t* reconstruction(node_t *root, knint weight, int rank){
         printf("solution from %d received\n",root->source); fflush(stdout);
       #endif
     } else { // if we reach leaf
-      additems ( rez, 1, copyitem(elem) );
+      additems ( rez, 1, elem );
     }
   } else {
     puts("reconstruction(): one child null and other not null :/");
@@ -372,7 +386,7 @@ head_list_t* reconstruction(node_t *root, knint weight, int rank){
   #if DBGLVL >= HI_DEBUG
     puts("-"); print_tree(root); puts("+"); print_list(rez); fflush(stdout);
   #endif
-  return rez;
+  return ;//rez;
 }
 
 /*

@@ -61,10 +61,22 @@ head_list_t* createlisthead ();
 void additems (head_list_t*, int, item_t*);
 void addlist (head_list_t*, head_list_t*);
 void addnode (head_list_t*, node_list_t*);
-head_list_t* cartesian (head_list_t*, head_list_t*);
 //items_list_t* addhead (items_list_t* head, int length , item_t*);
 void print_list (head_list_t*);
 void free_list(head_list_t**);
+
+typedef struct nodesuperlist {
+  head_list_t *list;
+  struct nodesuperlist *next;
+} node_suplist_t;
+typedef struct headsuperlist {
+	node_suplist_t *next;
+} head_suplist_t;
+node_list_t* createsuplistnode ();
+head_list_t* createsuplisthead ();
+
+void addlist (head_suplist_t*, head_list_t*);
+void cartesian (head_suplist_t*, head_suplist_t*, head_suplist_t*);
 
 /*-- task section --*/
 
