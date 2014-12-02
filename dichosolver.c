@@ -17,6 +17,10 @@
 #define B_MSG 103
 #define RECONSTR_MSG 200
 #define SOL_SIZE_MSG 201
+#define GETCHANNEL_MSG 202
+#define BRANCH1_MSG 203
+#define BRANCH2_MSG 204
+
 
 #if defined(KNINT_INT)
 #define MPI_KNINT MPI_INT
@@ -176,6 +180,8 @@ else {
     #endif
 
     reconstruction ( solution, root, *(root->items->w), myrank);
+    
+    // receive all things
 
     printf ("I found %d solutions:\n",solution->count); //fflush(stdout);
     print_list (solution); //fflush (stdout);
@@ -289,10 +295,9 @@ node_t* receive_brother(int from, node_t *root, int *cnt, MPI_Status *stat){
     return all of the sets of elements, whose choice lend to "weight" weight
      return list of some amount of arrays, not hashes.
 */
-void reconstruction(head_list_t* rez, node_t *root, knint weight, int rank){
-  //head_list_t *rez = createlisthead(), 
-  head_list_t *thead = createlisthead();
+void reconstruction(node_t *root, knint weight, int level, bud_t* branch){
   // elem = element on top of root with 'weight'=weight
+  int branch_num = 1;
   item_t *elem;
   HASH_FIND (hh, root->items, &weight, KNINT_SIZE, elem);
   knint elem_p = *(elem->p), elem_w = *(elem->w);
@@ -313,16 +318,19 @@ void reconstruction(head_list_t* rez, node_t *root, knint weight, int rank){
     if ( tmp != NULL && *(tmp->p) == elem_p ){
       //free (rez);
       //rez = reconstruction (root->lnode, elem_w, rank);
-      reconstruction (rez, root->lnode, elem_w, rank);
+      reconstruction (root->lnode, elem_w, level, branch);
+      branch_num++;
     }
 
     // look for simple match in right subtree
     HASH_FIND (hh, root->rnode->items, &elem_w, KNINT_SIZE, tmp);
     if ( tmp != NULL && *(tmp->p) == elem_p ) {
-      reconstruction (thead, root->rnode, elem_w, rank);
-      addlist ( rez, thead );
-      thead->next = NULL;
-      //free_list (&thead);
+      if ( branch_num > 1 ) {
+      	reconstruction (root->rnode, elem_w, level, budoff(branch,level,branch_num));
+      } else {
+      	reconstruction (root->rnode, elem_w, level, branch);      	      
+      }
+      branch_num++;
     }
 
     // look for total match
@@ -331,21 +339,10 @@ void reconstruction(head_list_t* rez, node_t *root, knint weight, int rank){
       for ( tmp = root->lnode->items ; /*(*(tmp->w) <= elem_w) && cause not sorted! */tmp != NULL ; tmp = tmp->hh.next ) {
         for ( tm2 = root->rnode->items ; /*(*(tmp->w)+*(tm2->w) <= elem_w) && not sorted! */tm2 != NULL ; tm2 = tm2->hh.next ) {
           if ( (*(tmp->w) + *(tm2->w) == elem_w) && (*(tmp->p) + *(tm2->p)) == elem_p ) {
-            reconstruction (lhead, root->lnode, *(tmp->w), rank);
-            reconstruction (rhead, root->rnode, *(tm2->w), rank);
-            cartesian (thead, lhead, rhead );
-            #if DBGLVL >= MID_DEBUG
-            	print_list(lhead);
-            	print_list(rhead);
-            	print_list(cart); fflush(stdout);
-            #endif
-            addlist ( rez, thead );
-            thead->next = NULL;
-            lhead->next = NULL;
-            rhead->next = NULL;
-            /*free_list ( &thead );
-            free_list ( &lhead );
-            free_list ( &rhead );*/
+            bud_t *nb = ( branch_num < 2 ) ? branch : budoff(branch,level,branch_num);
+            reconstruction (root->lnode, *(tmp->w), level+1, nb);
+            reconstruction (root->rnode, *(tm2->w), level+1, nb);
+            branch_num++;
           }
         } // for rnode
       } // for lnode
@@ -358,27 +355,56 @@ void reconstruction(head_list_t* rez, node_t *root, knint weight, int rank){
       #if DBGLVL >= MID_DEBUG
         printf ("%d -> %d\n",rank,root->source); fflush (stdout);
       #endif
+      // send element
       MPI_Isend (&elem_w, 1, MPI_KNINT, root->source, RECONSTR_MSG, MPI_COMM_WORLD, req);
-      node_list_t *node;
-      int rezcount;
-      MPI_Recv (&rezcount, 1, MPI_INT, root->source, SOL_SIZE_MSG, MPI_COMM_WORLD, stat);
-      int i;
-      for ( i = 0 ; i < rezcount ; i++ ){
-        node = createlistnode();
-        MPI_Recv (&(node->length), 1, MPI_INT, root->source, SIZE_MSG, MPI_COMM_WORLD, stat);
-        item_t* items = createitems (node->length);
-        MPI_Irecv (items->p, node->length, MPI_KNINT, root->source, P_MSG, MPI_COMM_WORLD, reqp);
-        MPI_Irecv (items->w, node->length, MPI_KNINT, root->source, W_MSG, MPI_COMM_WORLD, reqw);
-        MPI_Wait(reqp,stat);
-        MPI_Wait(reqw,stat);
-        node->items = items;
-        addnode ( rez, node );
+      int *p = (int*)malloc ((2*branch->count)*sizeof(int)), *t, *pt;
+      // save to p all branch
+      memcpy (p, branch->oldbranch, 2*branch->oldcount*sizeof(int));
+      branch_t *br;
+      pt = p+2*branch_count-1;
+      for ( br = branch->next ; br != NULL ; br = br->next ) {
+        pt = br->branch; pt--;
+        pt = br->level; pt--;
       }
-      #if DBGLVL >= MID_DEBUG
-        printf("solution from %d received\n",root->source); fflush(stdout);
-      #endif
+      // send branch
+      branch_num = 2*branch->count; // size of array p
+      MPI_Isend (&branch_num, 1, MPI_INT, 0, RECONSTR_MSG, MPI_COMM_WORLD, req);
+      MPI_Isend (p, branch_num, MPI_INT, 0, RECONSTR_MSG, MPI_COMM_WORLD, req);
+      MPI_Wait (req, stat);
+      free (p);      
+
     } else { // if we reach leaf
-      additems ( rez, 1, elem );
+      // send branch to 0 process
+      MPI_Isend (&branch_num,1,MPI_INT, 0, GETCHANNEL_MSG, MPI_COMM_WORLD, req);
+            
+      int *p = (int*)malloc ((2*branch->count+1)*sizeof(int)), *t, *pt;
+      // save to p all branch
+      memcpy (p, branch->oldbranch, 2*branch->oldcount*sizeof(int));
+      branch_t *br;
+      pt = p+2*branch_count-1;
+      for ( br = branch->next ; br != NULL ; br = br->next ) {
+        pt = br->branch; pt--;
+        pt = br->level; pt--;
+      }
+      // recv unique key for my branch
+      MPI_Recv(&branch_num, 1, MPI_INT, 0, GETCHANNEL_MSG, MPI_COMM_WORLD, stat);
+      // add unique key
+      p[2*branch->count] = branch_num;
+      int count[2] = { 2*branch->count+1, branch_num };
+      // send branch
+      MPI_Isend (count, 2, MPI_INT, 0, BRANCH1_MSG, MPI_COMM_WORLD, req);
+      MPI_Isend (p,count[0],MPI_INT, 0, BRANCH1_MSG, MPI_COMM_WORLD, req);
+      
+      // send element
+      knint *e = (knint*)malloc (3*KNINT_SIZE);
+      e[0] = *(elem->p);
+      e[1] = *(elem->w);
+      e[2] = branch_num;
+      MPI_Isend (e,3,MPI_KNINT, 0, BRANCH2_MSG, MPI_COMM_WORLD, req);
+
+      MPI_Wait (req, stat);
+      free (p);
+      free (e);
     }
   } else {
     puts("reconstruction(): one child null and other not null :/");
@@ -589,3 +615,44 @@ task_t* readnspread_task_parallel(char* filename, int *groupsize){
     free (sizes);
     return mytask;
 } // readnspread_task_parallel()
+
+size_t BRANCH_SIZE = sizeof(branch_t);
+size_t BUD_SIZE = sizeof(bud_t);
+
+bud_t* createbud () {
+  bud_t *bud = (bud_t*)malloc (BUD_SIZE);
+  bud->count = bud->oldcount = 0;
+  bud->next = 0;
+  bud->oldbranch = 0;
+  return bud;
+}
+bud_t* createbud (int *oldb, int oldc) {
+  bud_t *bud = createbud ();
+  bud->count = oldc;
+  bud->oldbranch = oldb;
+  bud->oldcount = oldc;
+  return bud;
+}
+bud_t* lightcopybud (bud_t *bud) {
+  bud_t *nb = createbud(bud->oldbranch, bud->oldcount);
+  nb->count = bud->count;
+  nb->next = bud->next;
+  return nb;
+}
+
+bud_t* budoff(bud_t *bud, int level, int branch) {
+  bud_t *newbud = lightcopybud (bud);
+  grow (newbud, level, branch);
+  return newbud;
+}
+
+void grow (bud_t* bud, int level, int branch) {
+  branch_t *branch = (branch_t*)malloc (BRANCH_SIZE);
+  branch->level = level;
+  branch->branch = branch;
+
+  branch->next = bud->next;
+  bud->next = branch;
+  bud->count++;
+}
+

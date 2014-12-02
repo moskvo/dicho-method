@@ -35,7 +35,7 @@ size_t ITEM_SIZE;
   struct elem_t *next, *prev;
 } elem_t;*/
 
-item_t* createitems (int);
+Kitem_t* createitems (int);
 item_t* createitems0 (int);
 item_t* copyitem (item_t*);
 item_t* copyitems (int, item_t*);
@@ -65,18 +65,6 @@ void addnode (head_list_t*, node_list_t*);
 void print_list (head_list_t*);
 void free_list(head_list_t**);
 
-typedef struct nodesuperlist {
-  head_list_t *list;
-  struct nodesuperlist *next;
-} node_suplist_t;
-typedef struct headsuperlist {
-	node_suplist_t *next;
-} head_suplist_t;
-node_list_t* createsuplistnode ();
-head_list_t* createsuplisthead ();
-
-void addlist (head_suplist_t*, head_list_t*);
-void cartesian (head_suplist_t*, head_suplist_t*, head_suplist_t*);
 
 /*-- task section --*/
 
