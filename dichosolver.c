@@ -52,6 +52,8 @@ int main(int argc, char** argv){
   MPI_Request *msgreq = (MPI_Request*)malloc(4*sizeof(MPI_Request)), *reqsz = msgreq, *reqp = msgreq+1, *reqw = msgreq+2, *reqb = msgreq+3;
   MPI_Status *msgstat = (MPI_Status*)malloc(4*sizeof(MPI_Status)), *statsz = msgstat, *statp = msgstat+1, *statw = msgstat+2, *statb = msgstat+3;
 
+  node_t *root = NULL;
+
 /* get task code for process zero */
 if (myrank == 0)
 {
@@ -79,27 +81,27 @@ else {
     MPI_Irecv (mytask->items->p,size,MPI_KNINT,0,P_MSG,MPI_COMM_WORLD, reqp);
     MPI_Irecv (mytask->items->w,size,MPI_KNINT,0,W_MSG,MPI_COMM_WORLD, reqw);
     MPI_Waitall (2,reqp,statp);
-}
 
-  #if DBGLVL >= LOW_DEBUG
-  printf("%d readed. b=%ld, size=%d. solving...\n",myrank,mytask->b,mytask->length); fflush(stdout);
-  #endif
+    #if DBGLVL >= LOW_DEBUG
+    printf("%d readed. b=%ld, size=%d. solving...\n",myrank,mytask->b,mytask->length); fflush(stdout);
+    #endif
 
-  //{ solve mytask
-  node_t *root;
-  if( (root = burkovtree ( mytask )) == 0 )
-  { puts("Can't build optdichotree"); fflush(stdout); }
+    //{ solve mytask
+    if( (root = burkovtree ( mytask )) == 0 )
+    { puts("Can't build optdichotree"); fflush(stdout); }
 
-  treesolver (root,mytask->b);
+    treesolver (root,mytask->b);
 
-  #if DBGLVL >= LOW_DEBUG
-    printf("%d: local task solved. Solving parallel...\n",myrank); fflush(stdout);
-  #endif
-  //}
+    #if DBGLVL >= LOW_DEBUG
+      printf("%d: local task solved. Solving parallel...\n",myrank); fflush(stdout);
+    #endif
+    //}
 
-  #if DBGLVL >= MID_DEBUG
-    print_tree(root); fflush(stdout);
-  #endif
+    #if DBGLVL >= MID_DEBUG
+      print_tree(root); fflush(stdout);
+    #endif
+
+}// else
 
   // get elements(solutions) from other processes and solve again with it
   int frontier = groupsize, group;
@@ -159,7 +161,7 @@ else {
     }
     MPI_Wait(reqsz,statsz);
 
-  }
+  } // else of if myrank == 0
 
   #if DBGLVL >=LOW_DEBUG
     printf("%d: solution reconstruction\n",myrank); fflush(stdout);
@@ -179,7 +181,8 @@ else {
       printf("%d:size of top node: %d\n",myrank,root->length);
     #endif
 
-    reconstruction ( solution, root, *(root->items->w), myrank);
+    bud_t *branch = createbud ();
+    reconstruction ( root, *(root->items->w), 0, branch);
     
     // receive all things
 
@@ -197,6 +200,7 @@ else {
   }
   // other processes are waiting for reconstruction signal
   else {
+    // get seeked weight
     MPI_Recv (&weight, 1, MPI_KNINT, MPI_ANY_SOURCE, RECONSTR_MSG, MPI_COMM_WORLD, statb);
     if( weight > -1 ){
       #if DBGLVL >= LOW_DEBUG
@@ -207,24 +211,19 @@ else {
         printf("%d:size of top node: %d\n",myrank,root->length);
       #endif
 
-      reconstruction(solution, root, weight, myrank);
+      int branch_cnt, *p, level; 
 
-      #if DBGLVL >= LOW_DEBUG
-	printf("%d: i sending reconstructed message in size %d\n",myrank,solution->count);
-      #endif
-      #if DBGLVL >=HI_DEBUG
-        print_list (solution); fflush(stdout);
-      #endif
-      MPI_Isend (&(solution->count), 1, MPI_INT, statb->MPI_SOURCE, SOL_SIZE_MSG, MPI_COMM_WORLD,reqb);
-      node_list_t *i;
-      for ( i = solution->next ; i != NULL ; i = i->next ){
-        if ( i->length < 1 ) { printf("%d: node's length = %d\n",myrank,i->length); fflush(stdout); }
-        MPI_Isend (&(i->length), 1, MPI_INT, statb->MPI_SOURCE, SIZE_MSG, MPI_COMM_WORLD, reqsz);
-        MPI_Isend (i->items->p, i->length, MPI_KNINT, statb->MPI_SOURCE, P_MSG, MPI_COMM_WORLD, reqp);
-        MPI_Isend (i->items->w, i->length, MPI_KNINT, statb->MPI_SOURCE, W_MSG, MPI_COMM_WORLD, reqw);
-        MPI_Waitall (3,reqsz,statsz);
-        //printf("%d: send %d\n",myrank,ct);
-      }
+      // get level
+      MPI_Recv (&level, 1, MPI_INT, MPI_ANY_SOURCE, RECONSTR_MSG, MPI_COMM_WORLD, statb);
+      
+      // get branch
+      MPI_Recv (&branch_cnt, 1, MPI_INT, MPI_ANY_SOURCE, RECONSTR_MSG, MPI_COMM_WORLD, statb);
+      p = (int*)malloc (branch_cnt*sizeof(int));
+      MPI_Recv (p, branch_cnt, MPI_INT, MPI_ANY_SOURCE, RECONSTR_MSG, MPI_COMM_WORLD, statb);
+
+      bud_t *branch = createbud (p,branch_cnt);
+
+      reconstruction(root, weight, level, branch);
 
     }// if element > -1
   }// else of myrank == 0
@@ -254,7 +253,7 @@ else {
   free(msgstat);
 
   #if DBGLVL >= LOW_DEBUG
-  printf("%d: ok\n", myrank); fflush (stdout);
+  	printf("%d: ok\n", myrank); fflush (stdout);
   #endif
   // mpi tails
   MPI_Finalize ();
@@ -263,7 +262,7 @@ else {
 
 node_t* receive_brother(int from, node_t *root, int *cnt, MPI_Status *stat){
   int size;
-  node_t *head = createnodes(2), *thead = head+1;
+  node_t *head = (root == NULL) ? createnodes(1) : createnodes(2), *thead = head+(root==NULL)?0:1;
   MPI_Recv(&(thead->length), 1, MPI_INT, from, SIZE_MSG, MPI_COMM_WORLD, stat);
   if ( thead->length > 0 ) {
     knint *p = (knint*)malloc(thead->length*KNINT_SIZE), *w = (knint*)malloc(thead->length*KNINT_SIZE), *pp, *ww;
@@ -285,8 +284,10 @@ node_t* receive_brother(int from, node_t *root, int *cnt, MPI_Status *stat){
 
   (*cnt)++;
 
-  head->lnode = root;
-  head->rnode = thead;
+  if ( root != NULL ) {
+      head->lnode = root;
+      head->rnode = thead;
+  }
 
   return head;
 }
@@ -352,36 +353,37 @@ void reconstruction(node_t *root, knint weight, int level, bud_t* branch){
   else if ( root->lnode == NULL && root->rnode == NULL ){
     // if we get this node from other process
     if ( root->source > -1 ) {
-      #if DBGLVL >= MID_DEBUG
-        printf ("%d -> %d\n",rank,root->source); fflush (stdout);
-      #endif
-      // send element
-      MPI_Isend (&elem_w, 1, MPI_KNINT, root->source, RECONSTR_MSG, MPI_COMM_WORLD, req);
-      int *p = (int*)malloc ((2*branch->count)*sizeof(int)), *t, *pt;
-      // save to p all branch
-      memcpy (p, branch->oldbranch, 2*branch->oldcount*sizeof(int));
-      branch_t *br;
-      pt = p+2*branch_count-1;
-      for ( br = branch->next ; br != NULL ; br = br->next ) {
-        pt = br->branch; pt--;
-        pt = br->level; pt--;
-      }
-      // send branch
-      branch_num = 2*branch->count; // size of array p
-      MPI_Isend (&branch_num, 1, MPI_INT, 0, RECONSTR_MSG, MPI_COMM_WORLD, req);
-      MPI_Isend (p, branch_num, MPI_INT, 0, RECONSTR_MSG, MPI_COMM_WORLD, req);
-      MPI_Wait (req, stat);
-      free (p);      
-
-    } else { // if we reach leaf
-      // send branch to 0 process
+        #if DBGLVL >= MID_DEBUG
+          printf ("%d -> %d\n",rank,root->source); fflush (stdout);
+        #endif
+        // send element
+      	MPI_Isend (&elem_w, 1, MPI_KNINT, root->source, RECONSTR_MSG, MPI_COMM_WORLD, req);
+        int *p = (int*)malloc ((2*branch->count)*sizeof(int)), *t, *pt;
+      	// save to p all branch
+      	memcpy (p, branch->oldbranch, 2*branch->oldcount*sizeof(int));
+      	branch_t *br;
+      	pt = p + 2*branch->count - 1;
+      	for ( br = branch->next ; br != NULL ; br = br->next ) {
+      	  pt = br->branch; pt--;
+      	  pt = br->level; pt--;
+      	}
+      	// send level      	
+      	MPI_Isend (&level, 1, MPI_INT, 0, RECONSTR_MSG, MPI_COMM_WORLD, req);
+      	// send branch
+      	branch_num = 2*branch->count; // size of array p
+      	MPI_Isend (&branch_num, 1, MPI_INT, 0, RECONSTR_MSG, MPI_COMM_WORLD, req);
+      	MPI_Isend (p, branch_num, MPI_INT, 0, RECONSTR_MSG, MPI_COMM_WORLD, req);
+      	MPI_Wait (req, stat);
+      	free (p);      
+    } else { // if we reach leaf send branch to 0 process
+      // send request for connection unique key
       MPI_Isend (&branch_num,1,MPI_INT, 0, GETCHANNEL_MSG, MPI_COMM_WORLD, req);
             
       int *p = (int*)malloc ((2*branch->count+1)*sizeof(int)), *t, *pt;
       // save to p all branch
       memcpy (p, branch->oldbranch, 2*branch->oldcount*sizeof(int));
       branch_t *br;
-      pt = p+2*branch_count-1;
+      pt = p + 2*branch->count - 1;
       for ( br = branch->next ; br != NULL ; br = br->next ) {
         pt = br->branch; pt--;
         pt = br->level; pt--;
@@ -399,7 +401,7 @@ void reconstruction(node_t *root, knint weight, int level, bud_t* branch){
       knint *e = (knint*)malloc (3*KNINT_SIZE);
       e[0] = *(elem->p);
       e[1] = *(elem->w);
-      e[2] = branch_num;
+      e[2] = branch_num; // key
       MPI_Isend (e,3,MPI_KNINT, 0, BRANCH2_MSG, MPI_COMM_WORLD, req);
 
       MPI_Wait (req, stat);
@@ -415,104 +417,6 @@ void reconstruction(node_t *root, knint weight, int level, bud_t* branch){
   return ;//rez;
 }
 
-/*
-    read the task from "filename" file and divide it within group of "groupsize" size
-*/
-task_t* readnspread_task(char* filename, int *groupsize){
-    task_t *mytask;
-    MPI_Request *reqs = (MPI_Request*)malloc((*groupsize)*sizeof(MPI_Request));
-    MPI_Status *stats = (MPI_Status*)malloc((*groupsize)*sizeof(MPI_Status));
-
-    FILE *file;
-    if( (file = fopen(filename,"r")) == 0 ) return 0;
-
-    int i;
-    knint b;
-  // send b
-    if( fscanf(file,"%ld",&b) != 1 ) return 0;
-    MPI_Bcast (&b, 1, MPI_KNINT, 0, MPI_COMM_WORLD);
-    //MPI_Waitall ((*groupsize)-1,reqs+1,stats+1);
-
-  // send size
-    int size;
-    if( fscanf(file,"%d",&size) != 1 ) return 0;
-    int oldgroup = *groupsize;
-    if( size < *groupsize ) *groupsize = size / 2;
-    int onesize = size / *groupsize, rest, add, *sizes = (int*)malloc((*groupsize)*sizeof(int)), *psz;
-
-    rest = size % *groupsize; // residue elements
-    add = (rest>0)?1:0; // flag: add 1 to size of elements to current task while residue isn't 0
-    for( i = 1, psz = sizes ; i < *groupsize ; i++, psz++ ){
-      *psz = onesize + add;
-      MPI_Isend (psz, 1, MPI_INT, i, SIZE_MSG, MPI_COMM_WORLD, reqs+i);
-      rest--;
-      add = (rest>0)?1:0;
-    }
-    free(sizes);
-
-  // send p
-    int onesizebyte = (onesize+1)*KNINT_SIZE;
-    knint *p = (knint*)malloc(4*onesizebyte), *p2=p+onesize+1, *w=p2+onesize+1, *w2=w+onesize+1, *tmp, *tmp2;
-
-      rest = size % *groupsize;
-      add = (rest>0)?1:0;
-      for( tmp = p ; tmp < p+onesize+add ; tmp++ )
-        { if( fscanf (file,"%ld", tmp) != 1 ) return 0; }
-      MPI_Isend (p, onesize+add, MPI_KNINT, 1, P_MSG, MPI_COMM_WORLD, reqs);
-      rest--;
-      add = (rest>0)?1:0;
-
-      for( i=2 ; i < *groupsize ; i++ ){
-        for( tmp = p2 ; tmp < p2+onesize+add ; tmp++ )
-          { if( fscanf (file,"%ld", tmp) != 1 ) return 0; }
-        MPI_Wait(reqs, stats);
-        memcpy (p,p2,onesizebyte);
-        MPI_Isend (p, onesize+add, MPI_KNINT, i, P_MSG, MPI_COMM_WORLD, reqs);
-        rest--;
-        add = (rest>0)?1:0;
-      }
-      for( tmp = p2 ; tmp < p2+onesize+add ; tmp++ )
-          { if( fscanf (file,"%ld", tmp) != 1 ) return 0; }
-
-      // mytask
-      mytask = createtask(onesize,b);
-      memcpy (mytask->items->p,p2,mytask->length*KNINT_SIZE);
-
-    // send w
-      rest = size % *groupsize;
-      add = (rest>0)?1:0;
-      for( tmp = w ; tmp < w+onesize+add ; tmp++ )
-        { if( fscanf (file,"%ld", tmp) != 1 ) return 0; }
-      MPI_Isend (w, onesize+add, MPI_KNINT, 1, W_MSG, MPI_COMM_WORLD, reqs);
-      rest--;
-      add = (rest>0)?1:0;
-
-      for( i=2 ; i < *groupsize ; i++ ){
-        for( tmp = w2 ; tmp < w2+onesize+add ; tmp++ )
-          { if( fscanf (file,"%ld", tmp) != 1 ) return 0; }
-        MPI_Wait(reqs, stats);
-        memcpy (w,w2,onesizebyte);
-        MPI_Isend (w, onesize+add, MPI_KNINT, i, W_MSG, MPI_COMM_WORLD, reqs);
-        rest--;
-        add = (rest>0)?1:0;
-      }
-
-      for( tmp = w2 ; tmp < w2+onesize+add ; tmp++ )
-          { if( fscanf (file,"%ld", tmp) != 1 ) return 0; }
-
-      memcpy (mytask->items->w,w2,mytask->length*KNINT_SIZE);
-
-  // close unnecessary workers
-    rest = -1;
-    for( i=*groupsize ; i < oldgroup ; i++ ){
-      MPI_Isend (&rest,1,MPI_INT, i, SIZE_MSG, MPI_COMM_WORLD, reqs+i);
-    }
-
-    fclose(file);
-    free (reqs);
-    free (p);
-    return mytask;
-} // readnspread_task()
 
 /*
     read the task from "filename" file and parallel divide it within group of "groupsize" size
@@ -543,9 +447,7 @@ task_t* readnspread_task_parallel(char* filename, int *groupsize){
         *sizes = (int*)malloc((*groupsize)*sizeof(int)), *psz;
 
     rest = (size % *groupsize); // residue elements
-    sizes[0] = onesize + (rest>0?1:0);
-  // printf("sizes[0]=%d\n",sizes[0]);
-    rest--;
+    // i(rank 0) am not in the group of solving base tasks
     for( i = 1, psz = sizes+1 ; i < *groupsize ; i++, psz++ ){
       (*psz) = onesize + (rest>0?1:0);
       MPI_Send (psz, 1, MPI_INT, i, SIZE_MSG, MPI_COMM_WORLD);
@@ -553,20 +455,20 @@ task_t* readnspread_task_parallel(char* filename, int *groupsize){
     }
 
   // puts("read p"); fflush(stdout);
-    knint **ps = (knint**)malloc((*groupsize)*sizeof(knint*)),
-          **ws = (knint**)malloc((*groupsize)*sizeof(knint*)), **tmps, **tmws;
+    knint **ps = (knint**) malloc ((*groupsize)*sizeof(knint*)),
+          **ws = (knint**) malloc ((*groupsize)*sizeof(knint*)), **tmps, **tmws;
     rest = size % *groupsize;
-    for ( i = 0,tmps=ps,tmws=ws ; i < *groupsize ; i++,tmps++,tmws++ ) {
+    for ( i = 1,tmps=ps+1,tmws=ws+1 ; i < *groupsize ; i++,tmps++,tmws++ ) {
       *tmps = (knint*)malloc(sizes[i]*KNINT_SIZE);
       *tmws = (knint*)malloc(sizes[i]*KNINT_SIZE);
     }
 
-      int proc = 0, num = 0;
+      int proc = 1, num = 0;
       for( i = 0 ; i < size ; i++ ) {
         if( fscanf (file,"%ld", ps[proc]+num) != 1 ) return 0;
         proc++;
         if( proc == *groupsize ){
-          proc = 0;
+          proc = 1;
           num++;
         }
       }
@@ -577,17 +479,16 @@ task_t* readnspread_task_parallel(char* filename, int *groupsize){
       }
 
   // puts("mytask"); fflush(stdout);
-      mytask = createtask(sizes[0],b);
-      memcpy (mytask->items->p,ps[0],mytask->length*KNINT_SIZE);
+      mytask = createtask(0,b);
 
   // puts("read w"); fflush(stdout);
-      proc = 0;
+      proc = 1;
       num = 0;
       for( i = 0 ; i < size ; i++ ) {
         if( fscanf (file,"%ld", ws[proc]+num) != 1 ) return 0;
         proc++;
         if( proc == *groupsize ){
-          proc = 0;
+          proc = 1;
           num++;
         }
       }
@@ -597,8 +498,6 @@ task_t* readnspread_task_parallel(char* filename, int *groupsize){
         MPI_Isend (ws[i], sizes[i], MPI_KNINT, i, W_MSG, MPI_COMM_WORLD, reqs+i);
       }
 
-      memcpy (mytask->items->w,ws[0],mytask->length*KNINT_SIZE);
-
   // puts("close unnecessary workers"); fflush(stdout);
     //MPI_Waitall ((*groupsize)-1,reqs+1,stats+1);
     rest = -1;
@@ -606,7 +505,7 @@ task_t* readnspread_task_parallel(char* filename, int *groupsize){
       MPI_Isend (&rest,1,MPI_INT, i, SIZE_MSG, MPI_COMM_WORLD, reqs+i);
     }
 
-    for( i = 0 ; i < *groupsize ; i++ ) { free(ps[i]); free(ws[i]); }
+    for( i = 1 ; i < *groupsize ; i++ ) { free(ps[i]); free(ws[i]); }
     free (ps); free (ws);
 
     fclose(file);
