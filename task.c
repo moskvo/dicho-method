@@ -299,3 +299,27 @@ int value_sort (item_t *a, item_t *b) {
   if ( *(a->p) > *(b->p) ) return (int) -1;
   return 0;
 }
+
+/*-- solutions tree section ---*/
+size_t SOLNODE_SIZE = sizeof(solnode_t);
+solnode_t* createsolnode () {
+	return (solnode_t*) calloc (1,SOLNODE_SIZE);
+}
+solnode_t* createsolnode ( int level, int branch ) {
+	 solnode_t* n = (solnode_t*) calloc (1,SOLNODE_SIZE);
+	 n->level = level;
+	 n->branch = branch;
+	 return n;
+}
+solnode_t* addsolchild ( solnode_t *parent, int level, int branch ) {
+	solnode_t *child = createsolnode (level, branch);
+	HASH_ADD_KEYPTR ( hh, parent->childs, branch, sizeof(int), child );
+	return child;
+}
+solnode_t* addsolitem ( solnode_t* n, knint* p, knint* w) {
+	item_t *item = createitems (1);
+	*(item->p) = *p;
+	*(item->w) = *w;
+	HASH_ADD_KEYPTR ( hh, n->items, item->w, KNINT_SIZE, item );
+	return n;
+}

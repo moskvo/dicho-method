@@ -93,12 +93,26 @@ typedef struct node {
 
 node_t* createnodes(int size);
 
-void print_tree(node_t*);
-void print_node(char*, node_t*);
+void print_tree (node_t*);
+void print_node (char*, node_t*);
 
-void free_tree(node_t*);
-void free_node(node_t*);
+void free_tree ( node_t* ) ;
+void free_node ( node_t* ) ;
 
 int value_sort (item_t*, item_t*);
 
+/*-- solutions tree --*/
+
+size_t SOLNODE_SIZE;
+
+typedef struct solnode_t {
+	item_t *items;
+	struct solnode_t *childs, *next;
+	int level, branch;
+	UT_hash_handle hh;
+} solnode_t;
+solnode_t* createsolnode ();
+solnode_t* createsolnode (int, int);
+solnode_t* addsolchild ( solnode_t*, int, int );
+solnode_t* addsolitem ( solnode_t*, knint*, knint* );
 #endif

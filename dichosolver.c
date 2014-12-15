@@ -153,9 +153,9 @@ else {
         *pw = *(fp->w);
       }
       // send p and w
-      MPI_Isend( p, root->length, MPI_KNINT,to,P_MSG, MPI_COMM_WORLD, reqp);
+      MPI_Isend( p, root->length, MPI_KNINT, to, P_MSG, MPI_COMM_WORLD, reqp);
       //printf("%d send: ",myrank); print_items(root->length, root->items);
-      MPI_Isend( w, root->length, MPI_KNINT,to,W_MSG, MPI_COMM_WORLD, reqw);
+      MPI_Isend( w, root->length, MPI_KNINT, to, W_MSG, MPI_COMM_WORLD, reqw);
       MPI_Waitall(2,reqp,statp);
       free(p); free(w);
     }
@@ -172,7 +172,7 @@ else {
 
   int size;
   knint weight;
-  head_list_t *solution = createlisthead();
+  solnode_t *soltree = createsolnode();
   // process zero run the reconstruction
   if ( myrank == 0 ){
     //element = root->length-1;
@@ -184,8 +184,64 @@ else {
     bud_t *branch = createbud ();
     reconstruction ( root, *(root->items->w), 0, branch);
     
+    
     // receive all things
+    int count;
+    knint *e = (knint*) malloc (2 * KNINT_SIZE);
+    MPI_Irecv (&count, 1, MPI_INT, MPI_ANY_SOURCE, BRANCH1_MSG, MPI_COMM_WORLD, reqb);
+    while (!!!!????) {
+	MPI_Wait(reqb,statb);
 
+    	int *branch = (int*) malloc (count*sizeof(int)), *br;
+    	MPI_Recv (branch, count, MPI_INT, statb->MPI_SOURCE, BRANCH1_MSG, MPI_COMM_WORLD, statw);
+    	MPI_Recv (e, 2, MPI_KNINT, statb->MPI_SOURCE, BRANCH2_MSG, MPI_COMM_WORLD, statw);
+    	
+
+    	solnode_t *node =  soltree;
+    	// find and/or insert branch in tree
+    	  for ( br = branch ; br < branch+count ; br = br+2) {
+		solnode_t *elem;
+		HASH_FIND (hh, node->childs, br+1, sizeof(int), elem);
+		if ( elem == null ) {
+			node = addsolchild (node, *br, *(br+1));
+		} else {
+			node = elem;
+		}
+	  }
+	// add items;
+    	addsolitem (node, e, e+1);
+    	
+    	MPI_Irecv (&count, 1, MPI_INT, MPI_ANY_SOURCE, BRANCH1_MSG, MPI_COMM_WORLD, reqb);
+
+    	free (branch);
+    }
+    
+    /// what i receive
+    
+      int *p = (int*)malloc ((2*branch->count)*sizeof(int)), *t, *pt;
+      // save to p all branch
+      memcpy (p, branch->oldbranch, 2*branch->oldcount*sizeof(int));
+      branch_t *br;
+      pt = p + 2*branch->count - 1;
+      for ( br = branch->next ; br != NULL ; br = br->next ) {
+        pt = br->branch; pt--;
+        pt = br->level; pt--;
+      }
+      // add unique key
+      int count = 2 * branch->count;
+      // send branch
+      MPI_Isend (&count, 1, MPI_INT, 0, BRANCH1_MSG, MPI_COMM_WORLD, req);
+      MPI_Isend (p, count, MPI_INT, 0, BRANCH1_MSG, MPI_COMM_WORLD, req);
+      
+      // send element
+      knint *e = (knint*) malloc (2*KNINT_SIZE);
+      e[0] = *(elem->p);
+      e[1] = *(elem->w);
+      MPI_Isend (e, 2, MPI_KNINT, 0, BRANCH2_MSG, MPI_COMM_WORLD, req);
+
+    ///
+
+    // print solutions
     printf ("I found %d solutions:\n",solution->count); //fflush(stdout);
     print_list (solution); //fflush (stdout);
 
@@ -375,11 +431,9 @@ void reconstruction(node_t *root, knint weight, int level, bud_t* branch){
       	MPI_Isend (p, branch_num, MPI_INT, 0, RECONSTR_MSG, MPI_COMM_WORLD, req);
       	MPI_Wait (req, stat);
       	free (p);      
-    } else { // if we reach leaf send branch to 0 process
-      // send request for connection unique key
-      MPI_Isend (&branch_num,1,MPI_INT, 0, GETCHANNEL_MSG, MPI_COMM_WORLD, req);
-            
-      int *p = (int*)malloc ((2*branch->count+1)*sizeof(int)), *t, *pt;
+    } else { // if we reach leaf then send branch to 0 process
+
+      int *p = (int*)malloc ((2*branch->count)*sizeof(int)), *t, *pt;
       // save to p all branch
       memcpy (p, branch->oldbranch, 2*branch->oldcount*sizeof(int));
       branch_t *br;
@@ -388,21 +442,17 @@ void reconstruction(node_t *root, knint weight, int level, bud_t* branch){
         pt = br->branch; pt--;
         pt = br->level; pt--;
       }
-      // recv unique key for my branch
-      MPI_Recv(&branch_num, 1, MPI_INT, 0, GETCHANNEL_MSG, MPI_COMM_WORLD, stat);
       // add unique key
-      p[2*branch->count] = branch_num;
-      int count[2] = { 2*branch->count+1, branch_num };
+      int count = 2 * branch->count;
       // send branch
-      MPI_Isend (count, 2, MPI_INT, 0, BRANCH1_MSG, MPI_COMM_WORLD, req);
-      MPI_Isend (p,count[0],MPI_INT, 0, BRANCH1_MSG, MPI_COMM_WORLD, req);
+      MPI_Isend (&count, 1, MPI_INT, 0, BRANCH1_MSG, MPI_COMM_WORLD, req);
+      MPI_Isend (p, count, MPI_INT, 0, BRANCH1_MSG, MPI_COMM_WORLD, req);
       
       // send element
-      knint *e = (knint*)malloc (3*KNINT_SIZE);
+      knint *e = (knint*) malloc (2*KNINT_SIZE);
       e[0] = *(elem->p);
       e[1] = *(elem->w);
-      e[2] = branch_num; // key
-      MPI_Isend (e,3,MPI_KNINT, 0, BRANCH2_MSG, MPI_COMM_WORLD, req);
+      MPI_Isend (e, 2, MPI_KNINT, 0, BRANCH2_MSG, MPI_COMM_WORLD, req);
 
       MPI_Wait (req, stat);
       free (p);
