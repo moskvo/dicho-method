@@ -35,7 +35,7 @@ size_t ITEM_SIZE;
   struct elem_t *next, *prev;
 } elem_t;*/
 
-Kitem_t* createitems (int);
+item_t* createitems (int);
 item_t* createitems0 (int);
 item_t* copyitem (item_t*);
 item_t* copyitems (int, item_t*);
@@ -59,7 +59,8 @@ node_list_t* createlistnode ();
 head_list_t* createlisthead ();
 
 void additems (head_list_t*, int, item_t*);
-void addlist (head_list_t*, head_list_t*);
+/*	add adjunct's list to end of head's list
+*/	void addlist (head_list_t*, head_list_t*);
 void addnode (head_list_t*, node_list_t*);
 //items_list_t* addhead (items_list_t* head, int length , item_t*);
 void print_list (head_list_t*);
@@ -107,12 +108,15 @@ size_t SOLNODE_SIZE;
 
 typedef struct solnode_t {
 	item_t *items;
-	struct solnode_t *childs, *next;
+	struct solnode_t *childs;
 	int level, branch;
 	UT_hash_handle hh;
 } solnode_t;
-solnode_t* createsolnode ();
+solnode_t* createsolnode0 ();
 solnode_t* createsolnode (int, int);
 solnode_t* addsolchild ( solnode_t*, int, int );
 solnode_t* addsolitem ( solnode_t*, knint*, knint* );
+void print_solutions ( solnode_t* );
+void free_solnodes ( solnode_t* );
+
 #endif

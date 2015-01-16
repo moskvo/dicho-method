@@ -92,6 +92,7 @@ head_list_t* createlisthead() {
 }
 
 void additems (head_list_t* head, int size, item_t* a) {
+  if ( size < 1 || a == NULL ) return;
   node_list_t* n = createlistnode();
   n->items = a;
   n->length = size;
@@ -106,13 +107,15 @@ void addnode (head_list_t *head, node_list_t *node) {
   head->next = node;
 }
 
+/*
+	add adjunct's list to end of head's list
+*/
 void addlist (head_list_t* head, head_list_t* adjunct) {
   if ( adjunct == NULL || adjunct->next == NULL ) return;
-  node_list_t* t = adjunct->next;
+  node_list_t* t = head->next;
   int i;
-  for ( i = 1 ; i < adjunct->count ; i++ ) t = t->next;
-  t->next = head->next;
-  head->next = adjunct->next;
+  for ( i = 1 ; i < head->count ; i++ ) t = t->next;
+  t->next = adjunct->next;
   head->count += adjunct->count;
 }
 
@@ -302,7 +305,7 @@ int value_sort (item_t *a, item_t *b) {
 
 /*-- solutions tree section ---*/
 size_t SOLNODE_SIZE = sizeof(solnode_t);
-solnode_t* createsolnode () {
+solnode_t* createsolnode0 () {
 	return (solnode_t*) calloc (1,SOLNODE_SIZE);
 }
 solnode_t* createsolnode ( int level, int branch ) {
@@ -322,4 +325,41 @@ solnode_t* addsolitem ( solnode_t* n, knint* p, knint* w) {
 	*(item->w) = *w;
 	HASH_ADD_KEYPTR ( hh, n->items, item->w, KNINT_SIZE, item );
 	return n;
+}
+
+void print_solutions (solnode_t* root) {
+  puts("[");
+  _print_solutions (NULL, root);
+  puts("]");
+}
+
+void _print_solutions (head_list_t* pre, solnode_t* root) {
+  head_list_t *h = createlisthead ();
+
+  unsigned int num_items;
+  num_items = HASH_COUNT (root->items);
+  additems (h, num_items, root->items);
+
+  addlist (h, pre);
+
+  if ( root->childs == NULL ) {
+    print_list (h);
+  } else {
+    solnode_t *s;
+
+    for ( s = root->childs ; s != NULL ; s = s->hh.next ) {
+        _print_solutions(h, s);
+    }
+  }
+
+  if ( num_items > 0 )  free (h->next);
+  free (h);
+}
+
+void free_solnodes ( solnode_t *tree ) {
+    solnode_t *s;
+
+    for ( s = root->childs ; s != NULL ; s = s->hh.next ) {
+        _print_solutions(h, s);
+    }  
 }

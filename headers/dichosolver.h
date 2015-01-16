@@ -1,5 +1,5 @@
-#ifndef _TASK_H_
-#define _TASK_H_
+#ifndef _DICHOSOLVER_H_
+#define _DICHOSOLVER_H_
 
 #ifndef _STDIO_H
 #include <stdio.h>
@@ -21,12 +21,12 @@ typedef struct bud_t {
   int count; // count of branches
   int *oldbranch; // [level1,branch1,level2,...]
   int oldcount; 
-  struct branch_t *next;
-} branch_t;
+  branch_t *next;
+} bud_t;
 size_t BRANCH_SIZE;
 size_t BUD_SIZE;
 
-bud_t* createbud();
+bud_t* createbud0();
 bud_t* createbud(int, int*);
 bud_t* lightcopybud (bud_t *bud);
 bud_t* budoff(bud_t *bud, int level, int branch);
