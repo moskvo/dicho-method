@@ -13,5 +13,5 @@ srun -n90 solver knaproblem.txt
 Format of input file:  
 \<knapsack size\>  
 \<number of items\>  
-\<items\' values\>  
-\<items\' weights\>  
+\<items' values\>  
+\<items' weights\>  
