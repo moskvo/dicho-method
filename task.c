@@ -1,15 +1,16 @@
 #include "task.h"
 
 /*-- item section --*/
-size_t KNINT_SIZE = sizeof(knint);
-size_t ITEM_SIZE = sizeof(item_t);
+
+size_t KNINT_SIZE = sizeof (knint);
+size_t ITEM_SIZE = sizeof (item_t);
 
 item_t* createitems(int size){
-  if( size < 1 ) return 0;
+  if( size < 1 ) return NULL;
   knint *p = (knint*)malloc (size*KNINT_SIZE),
         *w = (knint*)malloc (size*KNINT_SIZE);
   item_t *items = (item_t*)malloc (size*sizeof(item_t)), *i;
-  if( (p == 0) || (w == 0) || (items == 0) ) { return 0; }
+  if( (p == 0) || (w == 0) || (items == 0) ) { return NULL; }
 
   for( i=items ; i < items+size ; i++ )
   {  i->p = p++; i->w = w++; }
@@ -18,11 +19,11 @@ item_t* createitems(int size){
 }
 
 item_t* createitems0(int size){
-  if( size < 1 ) return 0;
+  if( size < 1 ) return NULL;
   knint *p = (knint*)calloc (size,KNINT_SIZE),
         *w = (knint*)calloc (size,KNINT_SIZE);
   item_t *items = (item_t*)malloc (size*sizeof(item_t)), *i;
-  if( (p == 0) || (w == 0) || (items == 0) ) { return 0; }
+  if( (p == 0) || (w == 0) || (items == 0) ) { return NULL; }
 
   for( i=items ; i < items+size ; i++ )
   {  i->p = p++; i->w = w++; }
@@ -67,10 +68,19 @@ item_t* joinitems(int size1, item_t *it1, int size2, item_t *it2) {
 
 void print_items ( int size , item_t *item ){
   knint *p, *w;
+  if ( size == 0 ) return;
 
   for( p = item->p, w = item->w ; p < item->p+size ; p++,w++ )
     printf("(%4ld %4ld) ",*p,*w);
   puts("");
+}
+// same as print_items() but not add newline symbol
+void print_items_line ( int size , item_t *item ){
+  knint *p, *w;
+  if ( size == 0 ) return;
+
+  for( p = item->p, w = item->w ; p < item->p+size ; p++,w++ )
+    printf("(%4ld %4ld) ",*p,*w);
 }
 
 void print_hash (item_t *hash){
@@ -123,8 +133,8 @@ void print_list (head_list_t *head) {
   puts("[");
   if ( head->count > 0 ) {
     node_list_t *n;
-    for ( n = head->next ; n != 0 ; n = n->next ){
-      print_items (n->length, n->items);
+    for ( n = head->next ; n != NULL ; n = n->next ){
+      print_items_line (n->length, n->items);
     }
   }
   puts("]");
@@ -145,7 +155,6 @@ void free_list (head_list_t **head) {
 /*-- task section --*/
 
 task_t* createtask(int size, knint b){
-  if( size < 1 ) return 0;
   task_t *t = (task_t*)malloc(sizeof(task_t));
   t->length = size;
   t->b = b;
@@ -242,20 +251,20 @@ void free_hash (item_t **hash){
 }
 
 void free_task(task_t **p){
-  if( p ) {
-  free_items ( &((*p)->items) );
-  free (*p);
-  *p = 0;
+  if ( p ) {
+    if( (*p)->items != NULL ) free_items ( &((*p)->items) );
+    free (*p);
+    *p = 0;
   }
 }
 
-/*-- node section --*/
+/*-- tree section --*/
 
-const size_t NODE_SIZE = sizeof(node_t);
+const size_t NODE_SIZE = sizeof (node_t);
 
 node_t* createnodes (int size) {
   if( size < 1 ) return 0;
-  node_t *rez = (node_t*)calloc(size,NODE_SIZE), *t;
+  node_t *rez = (node_t*)calloc (size,NODE_SIZE), *t;
   for ( t = rez ; t < rez + size ; t++ ) {
     t->source = -1;
   }
@@ -268,7 +277,7 @@ void print_tree (node_t *root){
 
 void print_node (char * pre, node_t *node){
   fputs(pre,stdout);
-  if( node->length < 1 ) puts("It hasn't any items");
+  if( node->length < 1 ) puts("node: 0 items");
   else {
     item_t *item = node->items;
     for ( ; item != NULL ; item = item->hh.next ) {
@@ -291,11 +300,22 @@ void free_node (node_t* node){
 }
 
 void free_tree (node_t *root){
-  if( root->lnode != NULL ) free_tree ( root->lnode );
-  if( root->rnode != NULL ) free_tree ( root->rnode );
-  free_node (root);
-  //(*root) = 0;
-}
+  node_t *runner = root, *tmp;
+  int lastjump; // 0 - to left, 1 - to right
+  while ( runner != NULL ) {
+  	while ( (runner->rnode != NULL) || (runner->lnode != NULL) ) {
+  		while ( runner->rnode != NULL ) { runner = runner->rnode; lastjump = 1; }
+  		while ( runner->lnode != NULL ) { runner = runner->lnode; lastjump = 0; }
+  	}
+  	tmp = runner;
+  	runner = runner->hnode;
+  	free_node (tmp);
+  	if ( runner != NULL ) {
+  		if ( lastjump == 0 ) runner->lnode = NULL;
+  		else runner->rnode = NULL;
+  	}
+  }// while
+}// free_tree
 
 int value_sort (item_t *a, item_t *b) {
   if ( *(a->p) < *(b->p) ) return (int) 1;
@@ -304,6 +324,7 @@ int value_sort (item_t *a, item_t *b) {
 }
 
 /*-- solutions tree section ---*/
+
 size_t SOLNODE_SIZE = sizeof(solnode_t);
 solnode_t* createsolnode0 () {
 	return (solnode_t*) calloc (1,SOLNODE_SIZE);
@@ -316,7 +337,7 @@ solnode_t* createsolnode ( int level, int branch ) {
 }
 solnode_t* addsolchild ( solnode_t *parent, int level, int branch ) {
 	solnode_t *child = createsolnode (level, branch);
-	HASH_ADD_KEYPTR ( hh, parent->childs, branch, sizeof(int), child );
+	HASH_ADD_INT ( parent->childs, branch, child );
 	return child;
 }
 solnode_t* addsolitem ( solnode_t* n, knint* p, knint* w) {
@@ -327,18 +348,22 @@ solnode_t* addsolitem ( solnode_t* n, knint* p, knint* w) {
 	return n;
 }
 
+void _print_solutions (head_list_t*, solnode_t*);
 void print_solutions (solnode_t* root) {
-  puts("[");
+  puts("{");
   _print_solutions (NULL, root);
-  puts("]");
+  puts("}");
 }
 
 void _print_solutions (head_list_t* pre, solnode_t* root) {
   head_list_t *h = createlisthead ();
 
-  unsigned int num_items;
-  num_items = HASH_COUNT (root->items);
-  additems (h, num_items, root->items);
+  item_t *s, *tmp;
+  unsigned int num_items = 0;  
+  HASH_ITER (hh, root->items, s, tmp) {
+  	additems (h, 1, s);
+  	num_items++;
+  }
 
   addlist (h, pre);
 
@@ -352,14 +377,30 @@ void _print_solutions (head_list_t* pre, solnode_t* root) {
     }
   }
 
-  if ( num_items > 0 )  free (h->next);
+  int i;
+  node_list_t *node, *node2;
+  for ( i = 0, node = h->next ; i < num_items ; i++, node = node2 ) {
+    node2 = node->next;
+    free (node);
+  }
   free (h);
 }
 
 void free_solnodes ( solnode_t *tree ) {
-    solnode_t *s;
+    if ( tree == NULL ) return;
+    solnode_t *s, *tmp;
 
-    for ( s = root->childs ; s != NULL ; s = s->hh.next ) {
-        _print_solutions(h, s);
-    }  
+    HASH_ITER (hh, tree->childs, s, tmp) {
+      HASH_DEL (tree->childs, s);  /* delete from hash */
+      free_solnodes (s);           /* free memory  */
+    }
+    
+    item_t *i, *ti;
+
+    HASH_ITER (hh, tree->items, i, ti) {
+      HASH_DEL (tree->items, i);  
+      free_items (&i);            
+    }
+    
+    free (tree);
 }

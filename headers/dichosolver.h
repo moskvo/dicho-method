@@ -1,17 +1,8 @@
 #ifndef _DICHOSOLVER_H_
 #define _DICHOSOLVER_H_
 
-#ifndef _STDIO_H
-#include <stdio.h>
-#endif
+#include "burkov.h"
 
-#ifndef _STDLIB_H
-#include <stdlib.h>
-#endif
-
-#ifndef _STRING_H
-#include <string.h>
-#endif
 
 typedef struct branch_t {
   int level, branch; // level and number of fork
@@ -33,6 +24,10 @@ bud_t* budoff(bud_t *bud, int level, int branch);
 
 void grow (bud_t*, int, int);
 
+node_t* receive_brother (int, node_t*, int*, MPI_Status*);
+void reconstruction (node_t *root, knint weight, int, bud_t*);
+task_t* readnspread_task (char*, int*);
+task_t* readnspread_task_parallel (char*, int*);
 
 
 #endif

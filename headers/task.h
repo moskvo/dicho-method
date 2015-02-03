@@ -42,10 +42,12 @@ item_t* copyitems (int, item_t*);
 item_t* copyhash (item_t*);
 item_t* joinitems (int, item_t*, int, item_t*);
 void print_items (int,item_t*);
+void print_items_line (int,item_t*);
 void print_hash (item_t*);
 
 
-// list for collect all solutions
+/*-- list for collect all solutions section --*/
+
 typedef struct node_list_t {
   item_t *items;
   int length;
@@ -88,21 +90,21 @@ void free_task (task_t**);
 typedef struct node {
   item_t  *items; // hash
   int length; // if length = 1, then free through DL_FOREACH, otherwise "HASH_CLEAR(hh,&items); free(items)"
-  struct node  *lnode, *rnode;
+  struct node  *lnode, *rnode, *hnode; // left, right and head nodes in tree
   int source;
 } node_t;
 
 node_t* createnodes(int size);
 
-void print_tree (node_t*);
-void print_node (char*, node_t*);
+void print_tree ( node_t* );
+void print_node ( char*, node_t* );
 
 void free_tree ( node_t* ) ;
 void free_node ( node_t* ) ;
 
-int value_sort (item_t*, item_t*);
+int value_sort ( item_t*, item_t* );
 
-/*-- solutions tree --*/
+/*-- solutions tree section --*/
 
 size_t SOLNODE_SIZE;
 

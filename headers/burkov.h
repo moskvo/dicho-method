@@ -15,12 +15,15 @@
 */
 node_t* optimal_dichotomic_tree ( const task_t* );
 node_t* (*burkovtree) (const task_t*);
-void dicho_tree_notrecursive ( node_t*, const int, item_t* );
-void (*dicho_tree)(node_t*, const int, item_t*);
+void dicho_tree_notrecursive (node_t*, const int, item_t* );
+void (*dicho_tree) (node_t*, const int, item_t*);
 void prep_items (const int, item_t*, const int, item_t**, item_t**);
 int find_q (knint);
 
-void treesolver (node_t* , knint );
+void (*treesolver) (node_t* , knint );
+void notrecursive_treesolver (node_t* , knint );
+void recursive_treesolver (node_t* , knint );
+
 item_t* dichosolve( int,item_t*, int,item_t*, knint, int*);
 
 
