@@ -42,10 +42,12 @@ item_t* copyitems (int, item_t*);
 item_t* copyhash (item_t*);
 item_t* joinitems (int, item_t*, int, item_t*);
 void print_items (int,item_t*);
+void print_items_line (int,item_t*);
 void print_hash (item_t*);
 
 
-// list for collect all solutions
+/*-- list for collect all solutions section --*/
+
 typedef struct node_list_t {
   item_t *items;
   int length;
@@ -59,24 +61,13 @@ node_list_t* createlistnode ();
 head_list_t* createlisthead ();
 
 void additems (head_list_t*, int, item_t*);
-void addlist (head_list_t*, head_list_t*);
+/*	add adjunct's list to end of head's list
+*/	void addlist (head_list_t*, head_list_t*);
 void addnode (head_list_t*, node_list_t*);
 //items_list_t* addhead (items_list_t* head, int length , item_t*);
 void print_list (head_list_t*);
 void free_list(head_list_t**);
 
-typedef struct nodesuperlist {
-  head_list_t *list;
-  struct nodesuperlist *next;
-} node_suplist_t;
-typedef struct headsuperlist {
-	node_suplist_t *next;
-} head_suplist_t;
-node_list_t* createsuplistnode ();
-head_list_t* createsuplisthead ();
-
-void addlist (head_suplist_t*, head_list_t*);
-void cartesian (head_suplist_t*, head_suplist_t*, head_suplist_t*);
 
 /*-- task section --*/
 
@@ -99,18 +90,35 @@ void free_task (task_t**);
 typedef struct node {
   item_t  *items; // hash
   int length; // if length = 1, then free through DL_FOREACH, otherwise "HASH_CLEAR(hh,&items); free(items)"
-  struct node  *lnode, *rnode;
+  struct node  *lnode, *rnode, *hnode; // left, right and head nodes in tree
   int source;
 } node_t;
 
 node_t* createnodes(int size);
 
-void print_tree(node_t*);
-void print_node(char*, node_t*);
+void print_tree ( node_t* );
+void print_node ( char*, node_t* );
 
-void free_tree(node_t*);
-void free_node(node_t*);
+void free_tree ( node_t* ) ;
+void free_node ( node_t* ) ;
 
-int value_sort (item_t*, item_t*);
+int value_sort ( item_t*, item_t* );
+
+/*-- solutions tree section --*/
+
+size_t SOLNODE_SIZE;
+
+typedef struct solnode_t {
+	item_t *items;
+	struct solnode_t *childs;
+	int level, branch;
+	UT_hash_handle hh;
+} solnode_t;
+solnode_t* createsolnode0 ();
+solnode_t* createsolnode (int, int);
+solnode_t* addsolchild ( solnode_t*, int, int );
+solnode_t* addsolitem ( solnode_t*, knint*, knint* );
+void print_solutions ( solnode_t* );
+void free_solnodes ( solnode_t* );
 
 #endif
